@@ -1,4 +1,12 @@
 # JCache 一个简单的缓存集成方案
+
+
+![](https://img.shields.io/github/issues/jerbe/jcache?color=green)
+![](https://img.shields.io/github/stars/jerbe/jcache?color=yellow)
+![](https://img.shields.io/github/forks/jerbe/jcache?color=orange)
+![](https://img.shields.io/github/license/jerbe/jcache?color=ff69b4)
+![](https://img.shields.io/github/languages/count/jerbe/jcache)
+![](https://img.shields.io/github/languages/code-size/jerbe/jcache?color=blueviolet)
 ## 项目由来
 我们在开发项目中，少不了需要用到缓存，甚至是分布式缓存。我们用的最多的就是Redis，它是一个非常优秀的分布式缓存数据库。
 
@@ -14,9 +22,9 @@
 
 ## 进度
 
--[x] Redis缓存支持
--[ ] 其他分布式缓存支持
--[ ] 本机内存支持
+- [x] Redis缓存支持
+- [ ] 其他分布式缓存支持
+- [ ] 本机内存支持
   - [x] 支持进行中...
 
 ## 问题
