@@ -2,6 +2,7 @@ package jcache
 
 import (
 	"context"
+	"github.com/jerbe/jcache/memory"
 	"github.com/redis/go-redis/v9"
 	"math/rand"
 	"time"
@@ -13,13 +14,21 @@ import (
   @describe :
 */
 
-var BG_CTX = context.Background()
+var (
+	BG_CTX = context.Background()
+
+	redisCli redis.UniversalClient
+
+	memoryCli *memory.Cache
+)
 
 func Redis() redis.UniversalClient {
 	return redisCli
 }
 
-var redisCli redis.UniversalClient
+func Memory() *memory.Cache {
+	return memoryCli
+}
 
 const (
 	// KeepTTL 保持原先的过期时间(TTL)
@@ -42,9 +51,15 @@ func RandomExpirationDuration() time.Duration {
 // Init 初始化缓存
 func Init(cfg *Config) error {
 	var err error
-	redisCli, err = initRedis(cfg.Redis)
-	if err != nil {
-		return err
+	if cfg.Redis != nil {
+		redisCli, err = initRedis(cfg.Redis)
+		if err != nil {
+			return err
+		}
+	}
+
+	if cfg.Memory != nil {
+		memoryCli = new(memory.Cache)
 	}
 	return nil
 }

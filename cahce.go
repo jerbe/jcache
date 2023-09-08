@@ -11,25 +11,21 @@ import (
   @describe :
 */
 
-// Exists 判断某个Key是否存在
-func Exists(ctx context.Context, key string) (bool, error) {
-	if redisCli != nil {
-		cmd := redisCli.Exists(ctx, key)
-		val, err := cmd.Result()
-
-		if err == nil {
-			return val > 0, nil
-		}
-	}
-
-	return false, ErrNoCacheClient
-}
+// =======================================================
+// ================= STRING ==============================
+// =======================================================
 
 // Set 设置数据
 func Set(ctx context.Context, key string, data any, expiration time.Duration) error {
 	if redisCli != nil {
 		if rs := redisCli.Set(ctx, key, data, expiration); rs.Err() != nil {
 			// @TODO 写入队列进行重试
+		}
+	}
+
+	if memoryCli != nil {
+		if err := memoryCli.Set(ctx, key, data, expiration); err != nil {
+			// @TODO Something
 		}
 	}
 
@@ -43,8 +39,119 @@ func SetNX(ctx context.Context, key string, data any, expiration time.Duration) 
 			// @TODO 写入队列进行重试
 		}
 	}
+
+	if memoryCli != nil {
+		if err := memoryCli.SetNX(ctx, key, data, expiration); err != nil {
+			// @TODO Something
+		}
+	}
+
 	return nil
 }
+
+// Get 获取数据
+func Get(ctx context.Context, key string) (string, error) {
+	if redisCli != nil {
+		cmd := redisCli.Get(ctx, key)
+		if cmd.Err() == nil {
+			return cmd.Result()
+		}
+	}
+
+	if memoryCli != nil {
+		if val, err := memoryCli.Get(ctx, key); err == nil {
+			return val, nil
+		}
+	}
+
+	return "", ErrNoCacheClient
+}
+
+// MGet 获取多个Keys的值
+func MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
+	if redisCli != nil {
+		cmd := redisCli.MGet(ctx, keys...)
+		if cmd.Err() == nil {
+			return cmd.Result()
+		}
+	}
+
+	return nil, ErrNoCacheClient
+}
+
+// GetAndScan 获取并扫描
+func GetAndScan(ctx context.Context, dst any, key string) error {
+	if redisCli != nil {
+		cmd := redisCli.Get(ctx, key)
+
+		if cmd.Err() == nil {
+			err := cmd.Scan(dst)
+			if err == nil {
+				return nil
+			}
+		}
+	}
+
+	return ErrNoCacheClient
+}
+
+// MGetAndScan 获取多个Keys的值并扫描进dst中
+func MGetAndScan(ctx context.Context, dst any, keys ...string) error {
+	if redisCli != nil {
+		cmd := redisCli.MGet(ctx, keys...)
+
+		if cmd.Err() == nil {
+			err := cmd.Scan(dst)
+			if err == nil {
+				return nil
+			}
+		}
+	}
+
+	return ErrNoCacheClient
+}
+
+// CheckAndGet 检测并获取数据
+func CheckAndGet(ctx context.Context, key string) (string, error) {
+	if redisCli != nil {
+		cmd := redisCli.Get(ctx, key)
+		var err = cmd.Err()
+
+		if err == nil {
+			// 如果找得到数据,并且没有错误并且数据为空,则返回找不到数据
+			if cmd.Val() == "" {
+				return "", ErrEmpty
+			}
+			return cmd.Val(), nil
+		}
+	}
+	return "", ErrNoCacheClient
+}
+
+// CheckAndScan 获取数据
+func CheckAndScan(ctx context.Context, dst any, key string) error {
+	if redisCli != nil {
+		cmd := redisCli.Get(ctx, key)
+		var err = cmd.Err()
+
+		if err == nil {
+			// 如果找得到数据,并且没有错误并且数据为空,则返回找不到数据
+			if cmd.Val() == "" {
+				return ErrEmpty
+			}
+
+			// 将不为空的数据扫描进struct中去
+			if err = cmd.Scan(dst); err == nil {
+				return nil
+			}
+		}
+	}
+	return ErrNoCacheClient
+}
+
+// =======================================================
+// ================= HASH ================================
+// =======================================================
 
 // HSet 写入hash数据
 func HSet(ctx context.Context, key string, values ...any) error {
@@ -196,110 +303,9 @@ func HDel(ctx context.Context, key string, fields ...string) error {
 	return nil
 }
 
-// Get 获取数据
-func Get(ctx context.Context, key string) (string, error) {
-	if redisCli != nil {
-		cmd := redisCli.Get(ctx, key)
-		if cmd.Err() == nil {
-			return cmd.Result()
-		}
-	}
-
-	return "", ErrNoCacheClient
-}
-
-// MGet 获取多个Keys的值
-func MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
-	if redisCli != nil {
-		cmd := redisCli.MGet(ctx, keys...)
-		if cmd.Err() == nil {
-			return cmd.Result()
-		}
-	}
-
-	return nil, ErrNoCacheClient
-}
-
-// GetAndScan 获取并扫描
-func GetAndScan(ctx context.Context, dst any, key string) error {
-	if redisCli != nil {
-		cmd := redisCli.Get(ctx, key)
-
-		if cmd.Err() == nil {
-			err := cmd.Scan(dst)
-			if err == nil {
-				return nil
-			}
-		}
-	}
-
-	return ErrNoCacheClient
-}
-
-// MGetAndScan 获取多个Keys的值并扫描进dst中
-func MGetAndScan(ctx context.Context, dst any, keys ...string) error {
-	if redisCli != nil {
-		cmd := redisCli.MGet(ctx, keys...)
-
-		if cmd.Err() == nil {
-			err := cmd.Scan(dst)
-			if err == nil {
-				return nil
-			}
-		}
-	}
-
-	return ErrNoCacheClient
-}
-
-// CheckAndGet 检测并获取数据
-func CheckAndGet(ctx context.Context, key string) (string, error) {
-	if redisCli != nil {
-		cmd := redisCli.Get(ctx, key)
-		var err = cmd.Err()
-
-		if err == nil {
-			// 如果找得到数据,并且没有错误并且数据为空,则返回找不到数据
-			if cmd.Val() == "" {
-				return "", ErrEmpty
-			}
-			return cmd.Val(), nil
-		}
-	}
-	return "", ErrNoCacheClient
-}
-
-// CheckAndScan 获取数据
-func CheckAndScan(ctx context.Context, dst any, key string) error {
-	if redisCli != nil {
-		cmd := redisCli.Get(ctx, key)
-		var err = cmd.Err()
-
-		if err == nil {
-			// 如果找得到数据,并且没有错误并且数据为空,则返回找不到数据
-			if cmd.Val() == "" {
-				return ErrEmpty
-			}
-
-			// 将不为空的数据扫描进struct中去
-			if err = cmd.Scan(dst); err == nil {
-				return nil
-			}
-		}
-	}
-	return ErrNoCacheClient
-}
-
-// Del 删除键
-func Del(ctx context.Context, keys ...string) error {
-	// 删除Redis
-	if redisCli != nil {
-		redisCli.Del(ctx, keys...)
-	}
-
-	// 删除其他的
-	return nil
-}
+// =======================================================
+// ================= LIST ================================
+// =======================================================
 
 // Push 推送数据
 func Push(ctx context.Context, key string, data ...any) error {
@@ -366,6 +372,35 @@ func PopAndScan(ctx context.Context, dst any, key string) error {
 		}
 	}
 	return ErrNoCacheClient
+}
+
+// =======================================================
+// ================= COMMON ==============================
+// =======================================================
+
+// Exists 判断某个Key是否存在
+func Exists(ctx context.Context, key string) (bool, error) {
+	if redisCli != nil {
+		cmd := redisCli.Exists(ctx, key)
+		val, err := cmd.Result()
+
+		if err == nil {
+			return val > 0, nil
+		}
+	}
+
+	return false, ErrNoCacheClient
+}
+
+// Del 删除键
+func Del(ctx context.Context, keys ...string) error {
+	// 删除Redis
+	if redisCli != nil {
+		redisCli.Del(ctx, keys...)
+	}
+
+	// 删除其他的
+	return nil
 }
 
 // Expire 设置某个Key的TTL时长

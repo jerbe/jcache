@@ -7,7 +7,8 @@ package jcache
 */
 
 type Config struct {
-	Redis *RedisConfig `json:"redis" yaml:"redis"`
+	Redis  *RedisConfig `json:"redis" yaml:"redis"`
+	Memory *MemoryConfig
 }
 
 type RedisConfig struct {
@@ -19,4 +20,9 @@ type RedisConfig struct {
 	Database   string   `yaml:"database"`
 	Username   string   `yaml:"username"`
 	Password   string   `yaml:"password"`
+}
+
+type MemoryConfig struct {
+	// MaxKeySize 最大的键数量
+	MaxKeySize int `yaml:"max_key_size"`
 }
