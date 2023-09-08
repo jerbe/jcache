@@ -28,7 +28,7 @@ func Exists(ctx context.Context, key string) (bool, error) {
 // Set 设置数据
 func Set(ctx context.Context, key string, data any, expiration time.Duration) error {
 	if redisCli != nil {
-		if rs := redisCli.Set(globCtx, key, data, expiration); rs.Err() != nil {
+		if rs := redisCli.Set(ctx, key, data, expiration); rs.Err() != nil {
 			// @TODO 写入队列进行重试
 		}
 	}
@@ -39,7 +39,7 @@ func Set(ctx context.Context, key string, data any, expiration time.Duration) er
 // SetNX 设置数据,如果key不存在的话
 func SetNX(ctx context.Context, key string, data any, expiration time.Duration) error {
 	if redisCli != nil {
-		if rs := redisCli.SetNX(globCtx, key, data, expiration); rs.Err() != nil {
+		if rs := redisCli.SetNX(ctx, key, data, expiration); rs.Err() != nil {
 			// @TODO 写入队列进行重试
 		}
 	}
@@ -49,7 +49,7 @@ func SetNX(ctx context.Context, key string, data any, expiration time.Duration) 
 // HSet 写入hash数据
 func HSet(ctx context.Context, key string, values ...any) error {
 	if redisCli != nil {
-		rs := redisCli.HSet(globCtx, key, values...)
+		rs := redisCli.HSet(ctx, key, values...)
 		if rs.Err() != nil {
 			// @TODO 写入队列进行重试
 		}
@@ -61,7 +61,7 @@ func HSet(ctx context.Context, key string, values ...any) error {
 // HVals 获取Hash表的所有值
 func HVals(ctx context.Context, key string) ([]string, error) {
 	if redisCli != nil {
-		cmd := redisCli.HVals(globCtx, key)
+		cmd := redisCli.HVals(ctx, key)
 		if cmd.Err() == nil {
 			return cmd.Result()
 		}
@@ -73,7 +73,7 @@ func HVals(ctx context.Context, key string) ([]string, error) {
 // HKeys 获取Hash表的所有键
 func HKeys(ctx context.Context, key string) ([]string, error) {
 	if redisCli != nil {
-		cmd := redisCli.HKeys(globCtx, key)
+		cmd := redisCli.HKeys(ctx, key)
 
 		if cmd.Err() == nil {
 			return cmd.Result()
@@ -86,7 +86,7 @@ func HKeys(ctx context.Context, key string) ([]string, error) {
 // HKeysAndScan 获取Hash表的所有键并扫描到dst中
 func HKeysAndScan(ctx context.Context, key string, dst any) error {
 	if redisCli != nil {
-		cmd := redisCli.HKeys(globCtx, key)
+		cmd := redisCli.HKeys(ctx, key)
 
 		if cmd.Err() == nil {
 			err := cmd.ScanSlice(dst)
@@ -102,7 +102,7 @@ func HKeysAndScan(ctx context.Context, key string, dst any) error {
 // HLen 获取Hash表的所有键个数
 func HLen(ctx context.Context, key string) (int64, error) {
 	if redisCli != nil {
-		cmd := redisCli.HLen(globCtx, key)
+		cmd := redisCli.HLen(ctx, key)
 		if cmd.Err() == nil {
 			return cmd.Result()
 		}
@@ -114,7 +114,7 @@ func HLen(ctx context.Context, key string) (int64, error) {
 // HGet 获取Hash表指定字段的值
 func HGet(ctx context.Context, key, field string) (string, error) {
 	if redisCli != nil {
-		cmd := redisCli.HGet(globCtx, key, field)
+		cmd := redisCli.HGet(ctx, key, field)
 
 		if cmd.Err() == nil {
 			return cmd.Val(), nil
@@ -127,7 +127,7 @@ func HGet(ctx context.Context, key, field string) (string, error) {
 // HGetAndScan 获取Hash表指定字段的值
 func HGetAndScan(ctx context.Context, dst any, key, field string) error {
 	if redisCli != nil {
-		cmd := redisCli.HGet(globCtx, key, field)
+		cmd := redisCli.HGet(ctx, key, field)
 
 		if cmd.Err() == nil {
 			err := cmd.Scan(dst)
@@ -143,7 +143,7 @@ func HGetAndScan(ctx context.Context, dst any, key, field string) error {
 // HMGet 获取Hash表指定字段的值
 func HMGet(ctx context.Context, key string, fields ...string) ([]any, error) {
 	if redisCli != nil {
-		cmd := redisCli.HMGet(globCtx, key, fields...)
+		cmd := redisCli.HMGet(ctx, key, fields...)
 		if cmd.Err() == nil {
 			return cmd.Val(), nil
 		}
@@ -155,7 +155,7 @@ func HMGet(ctx context.Context, key string, fields ...string) ([]any, error) {
 // HMGetAndScan 获取Hash表指定字段的值并扫描进入到dst中
 func HMGetAndScan(ctx context.Context, dst any, key string, fields ...string) error {
 	if redisCli != nil {
-		cmd := redisCli.HMGet(globCtx, key, fields...)
+		cmd := redisCli.HMGet(ctx, key, fields...)
 
 		if cmd.Err() == nil {
 			err := cmd.Scan(dst)
@@ -171,7 +171,7 @@ func HMGetAndScan(ctx context.Context, dst any, key string, fields ...string) er
 // HVals 获取Hash表的所有值
 func HValsScan(ctx context.Context, dst any, key string) error {
 	if redisCli != nil {
-		cmd := redisCli.HVals(globCtx, key)
+		cmd := redisCli.HVals(ctx, key)
 
 		if cmd.Err() == nil {
 			err := cmd.ScanSlice(dst)
@@ -187,7 +187,7 @@ func HValsScan(ctx context.Context, dst any, key string) error {
 // HDel 删除hash数据
 func HDel(ctx context.Context, key string, fields ...string) error {
 	if redisCli != nil {
-		rs := redisCli.HDel(globCtx, key, fields...)
+		rs := redisCli.HDel(ctx, key, fields...)
 		if rs.Err() != nil {
 			// @TODO 写入队列进行重试
 		}
@@ -199,7 +199,7 @@ func HDel(ctx context.Context, key string, fields ...string) error {
 // Get 获取数据
 func Get(ctx context.Context, key string) (string, error) {
 	if redisCli != nil {
-		cmd := redisCli.Get(globCtx, key)
+		cmd := redisCli.Get(ctx, key)
 		if cmd.Err() == nil {
 			return cmd.Result()
 		}
@@ -211,7 +211,7 @@ func Get(ctx context.Context, key string) (string, error) {
 // MGet 获取多个Keys的值
 func MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
 	if redisCli != nil {
-		cmd := redisCli.MGet(globCtx, keys...)
+		cmd := redisCli.MGet(ctx, keys...)
 		if cmd.Err() == nil {
 			return cmd.Result()
 		}
@@ -223,7 +223,7 @@ func MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
 // GetAndScan 获取并扫描
 func GetAndScan(ctx context.Context, dst any, key string) error {
 	if redisCli != nil {
-		cmd := redisCli.Get(globCtx, key)
+		cmd := redisCli.Get(ctx, key)
 
 		if cmd.Err() == nil {
 			err := cmd.Scan(dst)
@@ -239,7 +239,7 @@ func GetAndScan(ctx context.Context, dst any, key string) error {
 // MGetAndScan 获取多个Keys的值并扫描进dst中
 func MGetAndScan(ctx context.Context, dst any, keys ...string) error {
 	if redisCli != nil {
-		cmd := redisCli.MGet(globCtx, keys...)
+		cmd := redisCli.MGet(ctx, keys...)
 
 		if cmd.Err() == nil {
 			err := cmd.Scan(dst)
@@ -255,7 +255,7 @@ func MGetAndScan(ctx context.Context, dst any, keys ...string) error {
 // CheckAndGet 检测并获取数据
 func CheckAndGet(ctx context.Context, key string) (string, error) {
 	if redisCli != nil {
-		cmd := redisCli.Get(globCtx, key)
+		cmd := redisCli.Get(ctx, key)
 		var err = cmd.Err()
 
 		if err == nil {
@@ -272,7 +272,7 @@ func CheckAndGet(ctx context.Context, key string) (string, error) {
 // CheckAndScan 获取数据
 func CheckAndScan(ctx context.Context, dst any, key string) error {
 	if redisCli != nil {
-		cmd := redisCli.Get(globCtx, key)
+		cmd := redisCli.Get(ctx, key)
 		var err = cmd.Err()
 
 		if err == nil {
@@ -294,7 +294,7 @@ func CheckAndScan(ctx context.Context, dst any, key string) error {
 func Del(ctx context.Context, keys ...string) error {
 	// 删除Redis
 	if redisCli != nil {
-		redisCli.Del(globCtx, keys...)
+		redisCli.Del(ctx, keys...)
 	}
 
 	// 删除其他的
@@ -305,7 +305,7 @@ func Del(ctx context.Context, keys ...string) error {
 func Push(ctx context.Context, key string, data ...any) error {
 	if redisCli != nil {
 		// 从右边插入
-		cmd := redisCli.RPush(globCtx, key, data...)
+		cmd := redisCli.RPush(ctx, key, data...)
 		if cmd.Err() != nil {
 			// @TODO 重做?或提送到队列服务再重做?
 		}
@@ -317,7 +317,7 @@ func Push(ctx context.Context, key string, data ...any) error {
 // Rang 获取列表内的范围数据
 func Rang(ctx context.Context, key string, limit int64) ([]string, error) {
 	if redisCli != nil {
-		cmd := redisCli.LRange(globCtx, key, 0, limit-1)
+		cmd := redisCli.LRange(ctx, key, 0, limit-1)
 		if cmd.Err() == nil {
 			return cmd.Val(), nil
 		}
@@ -329,7 +329,7 @@ func Rang(ctx context.Context, key string, limit int64) ([]string, error) {
 // RangAndScan 通过扫描方式获取列表内的范围内数据
 func RangAndScan(ctx context.Context, dst any, key string, limit int64) error {
 	if redisCli != nil {
-		cmd := redisCli.LRange(globCtx, key, 0, limit-1)
+		cmd := redisCli.LRange(ctx, key, 0, limit-1)
 
 		if cmd.Err() == nil {
 			err := cmd.ScanSlice(dst)
@@ -345,7 +345,7 @@ func RangAndScan(ctx context.Context, dst any, key string, limit int64) error {
 // Pop 取出列表内的第一个数据
 func Pop(ctx context.Context, key string) (string, error) {
 	if redisCli != nil {
-		cmd := redisCli.LPop(globCtx, key)
+		cmd := redisCli.LPop(ctx, key)
 		if cmd.Err() == nil {
 			return cmd.Val(), nil
 		}
@@ -357,7 +357,7 @@ func Pop(ctx context.Context, key string) (string, error) {
 // PopAndScan 通过扫描方式取出列表内的第一个数据
 func PopAndScan(ctx context.Context, dst any, key string) error {
 	if redisCli != nil {
-		cmd := redisCli.LPop(globCtx, key)
+		cmd := redisCli.LPop(ctx, key)
 		if cmd.Err() == nil {
 
 			if err := cmd.Scan(dst); err == nil {
@@ -371,7 +371,7 @@ func PopAndScan(ctx context.Context, dst any, key string) error {
 // Expire 设置某个Key的TTL时长
 func Expire(ctx context.Context, key string, expiration time.Duration) error {
 	if redisCli != nil {
-		redisCli.Expire(globCtx, key, expiration)
+		redisCli.Expire(ctx, key, expiration)
 	}
 	// @TODO 其他缓存方法
 	return nil

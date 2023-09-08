@@ -13,7 +13,7 @@ import (
   @describe :
 */
 
-var globCtx = context.Background()
+var BG_CTX = context.Background()
 
 func Redis() redis.UniversalClient {
 	return redisCli
