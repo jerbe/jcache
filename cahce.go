@@ -3,6 +3,8 @@ package jcache
 import (
 	"context"
 	"time"
+
+	"github.com/jerbe/jcache/memory"
 )
 
 /**
@@ -60,7 +62,7 @@ func Get(ctx context.Context, key string) (string, error) {
 
 	if memoryCli != nil {
 		if val, err := memoryCli.Get(ctx, key); err == nil {
-			return val, nil
+			return string(val), nil
 		}
 	}
 
@@ -68,11 +70,18 @@ func Get(ctx context.Context, key string) (string, error) {
 }
 
 // MGet 获取多个Keys的值
-func MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
+func MGet(ctx context.Context, keys ...string) ([]any, error) {
 	if redisCli != nil {
 		cmd := redisCli.MGet(ctx, keys...)
 		if cmd.Err() == nil {
 			return cmd.Result()
+		}
+	}
+
+	if memoryCli != nil {
+		data, err := memoryCli.MGet(ctx, keys...)
+		if err == nil {
+			return data, nil
 		}
 	}
 
@@ -92,6 +101,16 @@ func GetAndScan(ctx context.Context, dst any, key string) error {
 		}
 	}
 
+	if memoryCli != nil {
+		data, err := memoryCli.Get(ctx, key)
+		if err == nil {
+			err = memory.Scan([]byte(data), dst)
+			if err == nil {
+				return nil
+			}
+		}
+	}
+
 	return ErrNoCacheClient
 }
 
@@ -105,6 +124,13 @@ func MGetAndScan(ctx context.Context, dst any, keys ...string) error {
 			if err == nil {
 				return nil
 			}
+		}
+	}
+
+	if memoryCli != nil {
+		err := memoryCli.MGetAndScan(ctx, dst, keys...)
+		if err == nil {
+			return nil
 		}
 	}
 

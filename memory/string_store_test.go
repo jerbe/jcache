@@ -38,8 +38,8 @@ func Test_stringStore_Get(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ss := &stringStore{
-				rwLock: tt.fields.rwLock,
-				values: tt.fields.values,
+				valRWMutex: tt.fields.rwLock,
+				values:     tt.fields.values,
 			}
 			got, err := ss.Get(tt.args.ctx, tt.args.key)
 			if (err != nil) != tt.wantErr {
@@ -72,8 +72,8 @@ func Test_stringStore_MGet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ss := &stringStore{
-				rwLock: tt.fields.rwLock,
-				values: tt.fields.values,
+				valRWMutex: tt.fields.rwLock,
+				values:     tt.fields.values,
 			}
 			got, err := ss.MGet(tt.args.ctx, tt.args.keys...)
 			if (err != nil) != tt.wantErr {
@@ -136,8 +136,8 @@ func Test_stringStore_Set(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ss := &stringStore{
-				rwLock: tt.fields.rwLock,
-				values: tt.fields.values,
+				valRWMutex: tt.fields.rwLock,
+				values:     tt.fields.values,
 			}
 			if err := ss.Set(tt.args.ctx, tt.args.key, tt.args.data, tt.args.expiration); (err != nil) != tt.wantErr {
 				t.Errorf("Set() error = %v, wantErr %v", err, tt.wantErr)
@@ -146,11 +146,23 @@ func Test_stringStore_Set(t *testing.T) {
 	}
 }
 
+func Test_stringStore_SetAndGet(t *testing.T) {
+	store := newStringStore()
+	err := store.Set(context.Background(), "Key", "Value", time.Second)
+	if err != nil {
+		return
+	}
+
+	time.Sleep(time.Second * 2)
+	get, err := store.Get(context.Background(), "Key")
+	log.Println(get, err)
+}
+
 func BenchmarkStringStore_SetAndGet(b *testing.B) {
 
 	b.StopTimer()
 	store := newStringStore()
-	b.SetParallelism(10000)
+	b.SetParallelism(1000)
 	var data = ""
 	for i := 0; i < 1000; i++ {
 		data += "Redis 命令参考"
@@ -162,19 +174,19 @@ func BenchmarkStringStore_SetAndGet(b *testing.B) {
 		for pb.Next() {
 			var key = "Key:" + strconv.FormatInt(rand.Int63(), 10)
 
-			err := store.Set(context.Background(), key, data, -1)
+			err := store.Set(context.Background(), key, data, time.Millisecond*500)
 			if err != nil {
+				b.StopTimer()
 				log.Println(1, err)
+				b.StartTimer()
 			}
 
 			_, err = store.Get(context.Background(), key)
 			if err != nil {
+				b.StopTimer()
 				log.Println(2, err)
-				return
+				b.StartTimer()
 			}
-
-			//log.Println("3", string(bytes), data)
-
 		}
 	})
 }
@@ -201,8 +213,8 @@ func Test_stringStore_SetNX(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ss := &stringStore{
-				rwLock: tt.fields.rwLock,
-				values: tt.fields.values,
+				valRWMutex: tt.fields.rwLock,
+				values:     tt.fields.values,
 			}
 			if err := ss.SetNX(tt.args.ctx, tt.args.key, tt.args.data, tt.args.expiration); (err != nil) != tt.wantErr {
 				t.Errorf("SetNX() error = %v, wantErr %v", err, tt.wantErr)

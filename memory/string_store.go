@@ -2,8 +2,11 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/jerbe/jcache/internal/hscan"
 )
 
 /**
@@ -17,26 +20,80 @@ type stringValue struct {
 	expireValue
 
 	// value 值
-	value []byte
+	value string
 }
 
 type stringStore struct {
-	rwLock sync.RWMutex
+	valRWMutex sync.RWMutex
 
 	values map[string]*stringValue
+
+	ekRWMutex sync.RWMutex
+
+	expiredKeys map[string]any
+
+	expireTicker *time.Ticker
 }
 
 func newStringStore() *stringStore {
-	return &stringStore{
-		rwLock: sync.RWMutex{},
-		values: make(map[string]*stringValue),
+	ticker := time.NewTicker(time.Second * 10)
+	store := &stringStore{
+		valRWMutex:   sync.RWMutex{},
+		values:       make(map[string]*stringValue),
+		ekRWMutex:    sync.RWMutex{},
+		expiredKeys:  make(map[string]any),
+		expireTicker: ticker,
 	}
+	go store.checkExpireTick()
+
+	return store
+}
+
+// deleteExpiredKeys 删除过期的键
+func (ss *stringStore) deleteExpiredKeys() {
+	fmt.Println("ss.deleteExpiredKeys")
+	ss.valRWMutex.Lock()
+	ss.ekRWMutex.Lock()
+	defer ss.ekRWMutex.Unlock()
+	defer ss.valRWMutex.Unlock()
+
+	for key, _ := range ss.expiredKeys {
+		delete(ss.values, key)
+		delete(ss.expiredKeys, key)
+	}
+
+	for key, value := range ss.values {
+		if value.IsExpire() {
+			delete(ss.values, key)
+		}
+	}
+}
+
+// checkExpireTick 检测到期的tick
+func (ss *stringStore) checkExpireTick() {
+	defer func() {
+		if obj := recover(); obj != nil {
+			go ss.checkExpireTick()
+		}
+	}()
+	for {
+		select {
+		case <-ss.expireTicker.C:
+			ss.deleteExpiredKeys()
+		}
+	}
+}
+
+func (ss *stringStore) setExpiredKey(key string) {
+	ss.ekRWMutex.Lock()
+	defer ss.ekRWMutex.Unlock()
+	ss.expiredKeys[key] = nil
 }
 
 // Set 设置数据
 func (ss *stringStore) Set(ctx context.Context, key string, data any, expiration time.Duration) error {
-	ss.rwLock.Lock()
-	defer ss.rwLock.Unlock()
+	ss.valRWMutex.Lock()
+	defer ss.valRWMutex.Unlock()
 
 	select {
 	case <-ctx.Done():
@@ -49,6 +106,8 @@ func (ss *stringStore) Set(ctx context.Context, key string, data any, expiration
 			return err
 		}
 		value.SetExpire(expiration)
+
+		delete(ss.expiredKeys, key)
 		ss.values[key] = value
 	}
 	return nil
@@ -56,9 +115,9 @@ func (ss *stringStore) Set(ctx context.Context, key string, data any, expiration
 
 // SetNX 设置数据,如果key不存在的话
 func (ss *stringStore) SetNX(ctx context.Context, key string, data any, expiration time.Duration) error {
-	ss.rwLock.RLock()
+	ss.valRWMutex.RLock()
 	_, ok := ss.values[key]
-	ss.rwLock.RUnlock()
+	ss.valRWMutex.RUnlock()
 	if ok {
 		return nil
 	}
@@ -67,36 +126,86 @@ func (ss *stringStore) SetNX(ctx context.Context, key string, data any, expirati
 }
 
 // Get 获取数据
-func (ss *stringStore) Get(ctx context.Context, key string) ([]byte, error) {
-	ss.rwLock.RLock()
-	defer ss.rwLock.RUnlock()
+func (ss *stringStore) Get(ctx context.Context, key string) (string, error) {
+	ss.valRWMutex.RLock()
+	defer ss.valRWMutex.RUnlock()
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+		if d, ok := ss.values[key]; ok {
+			if d.IsExpire() {
+				ss.setExpiredKey(key)
+				return "", Nil
+			}
+			return d.value, nil
+		}
+	}
+	return "", Nil
+}
+
+// GetAndScan 获取数据并将输入扫入dst
+func (ss *stringStore) GetAndScan(ctx context.Context, dst any, key string) error {
+	ss.valRWMutex.RLock()
+	defer ss.valRWMutex.RUnlock()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		bytes, err := ss.Get(ctx, key)
+		if err != nil {
+			return err
+		}
+		err = Scan([]byte(bytes), dst)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
+// MGet 根据多个Key获取多个值
+func (ss *stringStore) MGet(ctx context.Context, keys ...string) ([]any, error) {
+	ss.valRWMutex.RLock()
+	defer ss.valRWMutex.RUnlock()
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
-		if d, ok := ss.values[key]; ok {
-			return d.value, nil
+		var result = make([]any, 0, len(keys))
+		for _, key := range keys {
+			if d, ok := ss.values[key]; ok {
+				if d.IsExpire() {
+					result = append(result, nil)
+					ss.setExpiredKey(key)
+					continue
+				}
+
+				result = append(result, d.value)
+			} else {
+				result = append(result, nil)
+			}
 		}
+		return result, nil
 	}
-	return nil, Nil
 }
 
-// MGet 根据多个Key获取多个值
-func (ss *stringStore) MGet(ctx context.Context, keys ...string) ([][]byte, error) {
-	ss.rwLock.RLock()
-	defer ss.rwLock.RUnlock()
-
-	var result = make([][]byte, 0, len(keys))
-	for _, key := range keys {
-		if d, ok := ss.values[key]; ok {
-			result = append(result, d.value)
-		}
+// MGetAndScan 根据多个Key获取多个值
+func (ss *stringStore) MGetAndScan(ctx context.Context, dst any, keys ...string) error {
+	args := make([]any, len(keys))
+	for i := 0; i < len(keys); i++ {
+		args[i] = keys[i]
 	}
-
-	if len(result) == 0 {
-		return nil, Nil
+	val, err := ss.MGet(ctx, keys...)
+	if err != nil {
+		return err
 	}
-
-	return result, nil
+	err = hscan.Scan(dst, args, val)
+	if err != nil {
+		return err
+	}
+	return nil
 }

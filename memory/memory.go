@@ -61,11 +61,6 @@ func (ev *expireValue) SetExpireAt(t *time.Time) {
 		return
 	}
 
-	// 如果目标时间点在现在时间点之前,说明已经是一个过期时间,保持原来的策略
-	if t.Before(time.Now()) {
-		return
-	}
-
 	ev.expireAt = t
 }
 
@@ -84,13 +79,13 @@ type Cache struct {
 }
 
 // checkKeyType 检测Key的类型是否正确
-func (mc *Cache) checkKeyType(key string, useto StoreType) (bool, error) {
-	mc.strStore.rwLock.RLock()
+func (mc *Cache) checkKeyType(key string, useFor StoreType) (bool, error) {
+	mc.strStore.valRWMutex.RLock()
 	_, ok := mc.strStore.values[key]
-	mc.strStore.rwLock.RUnlock()
+	mc.strStore.valRWMutex.RUnlock()
 	if ok {
-		if useto != StoreTypeString {
-			return false, fmt.Errorf("该Key已经是String类型,不可用设置成%s类型", useto)
+		if useFor != StoreTypeString {
+			return false, fmt.Errorf("该Key已经是String类型,不可用设置成%s类型", useFor)
 		}
 		return true, nil
 	}
@@ -100,9 +95,9 @@ func (mc *Cache) checkKeyType(key string, useto StoreType) (bool, error) {
 // Exists 判断某个Key是否存在
 func (mc *Cache) Exists(ctx context.Context, key string) (bool, error) {
 	// 遍历字符串存储
-	mc.strStore.rwLock.RLock()
+	mc.strStore.valRWMutex.RLock()
 	_, ok := mc.strStore.values[key]
-	mc.strStore.rwLock.RUnlock()
+	mc.strStore.valRWMutex.RUnlock()
 	if ok {
 		return true, nil
 	}
@@ -135,15 +130,31 @@ func (mc *Cache) SetNX(ctx context.Context, key string, data any, expiration tim
 
 // Get 获取数据
 func (mc *Cache) Get(ctx context.Context, key string) (string, error) {
+	if _, err := mc.checkKeyType(key, StoreTypeString); err != nil {
+		return "", err
+	}
+
 	d, err := mc.strStore.Get(ctx, key)
 	if err != nil {
 		return "", err
 	}
-	return string(d), nil
+	return d, nil
+}
+
+// MGet 获取数据
+func (mc *Cache) MGet(ctx context.Context, keys ...string) ([]any, error) {
+	// 模拟redis
+	return mc.strStore.MGet(ctx, keys...)
+}
+
+// MGet 获取数据
+func (mc *Cache) MGetAndScan(ctx context.Context, dst any, keys ...string) error {
+	// 模拟redis
+	return mc.strStore.MGetAndScan(ctx, dst, keys...)
 }
 
 // marshalVal 解析数据
-func marshalVal(data any) ([]byte, error) {
+func marshalVal(data any) (string, error) {
 	// 先判断是否是指针类型
 	if data != nil {
 		if _, ok := data.(encoding.BinaryMarshaler); !ok && reflect.TypeOf(data).Kind() == reflect.Ptr {
@@ -158,7 +169,9 @@ func marshalVal(data any) ([]byte, error) {
 	case string:
 		val = []byte(d)
 	case []byte:
-		val = d
+		// 复制数据,不能直接设置
+		val = make([]byte, len(d))
+		copy(val, d)
 	case int:
 		val = strconv.AppendInt(val, int64(d), 10)
 	case int8:
@@ -196,14 +209,14 @@ func marshalVal(data any) ([]byte, error) {
 	case encoding.BinaryMarshaler:
 		b, err := d.MarshalBinary()
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		val = b
 	case net.IP:
 		val = d
 	default:
-		return nil, fmt.Errorf(
-			"redis: can't marshal %T (implement encoding.BinaryMarshaler)", d)
+		return "", fmt.Errorf(
+			"memory cache: can't marshal %T (implement encoding.BinaryMarshaler)", d)
 	}
-	return val, nil
+	return string(val), nil
 }
