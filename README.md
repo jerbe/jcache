@@ -1,4 +1,4 @@
-# JCache 一个简单的缓存集成方案
+# JCache 使用Golang开发的多级缓存集成方案
 
 
 ![](https://img.shields.io/github/issues/jerbe/jcache?color=green)
@@ -7,14 +7,15 @@
 ![](https://img.shields.io/github/license/jerbe/jcache?color=ff69b4)
 ![](https://img.shields.io/github/languages/count/jerbe/jcache)
 ![](https://img.shields.io/github/languages/code-size/jerbe/jcache?color=blueviolet)
+
 ## 项目由来
 我们在开发项目中，少不了需要用到缓存，甚至是分布式缓存。我们用的最多的就是Redis，它是一个非常优秀的分布式缓存数据库。
 
 但是如果在生产环境中，Redis挂了，导致某些业务无法再进行，甚至缓存雪崩，导致所有业务都无法进行。
 
-所以一般情况下，当Redis坏掉了，可以再降级使用其他缓存方案，我们利用服务器的内存开发缓存系统是最优的选择.
+所以一般情况下，我们是尽量不让redis这个分布式的缓存挂掉的，所以我们很多时候就会把自己服务实例上的内存拿来当缓存用，因为它快速、方便、基本无延迟。所以，我们每开发一个项目就会写上一堆缓存组件，很是麻烦。
 
-如果每次开发一个项目都需要写一套缓存系统出来，那得多累人，所以，当前项目就是将缓存操作集成起来，进行了封装，减少重复开发，以免浪费时间。
+现在，一个支持本机内存缓存并支持Redis等分布式缓存服务的集成方案产生了。我们开箱即用，非常方便。
 
 ## 架构
     * 本项目方案采用Redis优先,当Redis无法获取到数据时降级成直接使用本地内存.
@@ -22,21 +23,47 @@
 
 ## 进度
 
-- [x] Redis缓存支持
-- [ ] 其他分布式缓存支持
+- [x] Redis支持
 - [ ] 本机内存支持
   - [x] 单机模式支持
   - [ ] 分布式模式支持
 
-## 问题
-    
-1. Q:怎么保持数据的一致性?
-   A:各个服务之间可以通过服务发现方案建立之间的联系,如果有数据更新,其他订阅的服务实例也能同时接收到数据,并进行更新. (这个是一个最大的难点,先把单机的实现下)
-2. Q:如果有数据需要更新,是否所有在线的实例都需要更新?
-   A:现行方案是这样的，所以可能会导致内存爆棚的问题，这个可能需要更加详细的方案设计。
-3. Q:这个方案是独立的服务还是嵌入到代码里面的？
-   A:我们这个方案是嵌入到代码里面的，如果应用我们这个项目并使用，那么该应用也会成为一个缓存服务实例。
-4. Q:我们的这个方案是最牛逼的吗？
-   A:不是的
-5. Q:这个库适合所有项目吗?
-   A:并不，该库只是进行了简单的封装，其中逻辑较为简单，可能不适合一些较为大型的项目使用。如果需要使用，可以进行`fork`并执行对应的业务修改。
+## 案例
+```go
+import (
+    "time"
+	
+    "github.com/jerbe/jcache"
+    "github.com/jerbe/jcache/driver"
+)
+
+func main(){
+	// driver.NewMemory() 实例化一个以内存作为缓存的驱动
+	
+	// 支持所有操作的客户端,包括 String,Hash,List 
+	client := jcache.NewClient(driver.NewMemory())
+	client.Set(context.Background(),"hello","world", time.Hour)
+	client.Get(context.Background(),"hello")
+	client.MGet(context.Background(),"hello","hi")
+	...
+		
+	// 仅支持 String 操作的客户端 
+	stringClient := jcache.NewStringClien(driver.NewMemory()); 
+	stringClient.Set(context.Background(),"hello","world", time.Hour)
+	stringClient.Get(context.Background(),"hello")
+	stringClient.MGet(context.Background(),"hello","hi")
+	...
+	
+	// 仅支持 Hash 操作的客户端
+	hashClient := jcache.NewHashClient(driver.NewMemory()); 
+	hashClient.HSet(context.Background(),"hello","world","boom")
+	hashClient.HGet(context.Background(),"hello","world")
+	...
+	
+	// 仅支持 List 操作的客户端 
+	listClient := jcache.NewListClient(driver.NewMemory());
+	listClient.Push(context.Background(),"hello","world")
+	listClient.Pop(context.Background(),"hello")
+	listClient.Shift(context.Background(),"hello")
+}
+```
