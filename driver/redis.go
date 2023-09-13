@@ -22,6 +22,7 @@ type RedisConfig struct {
 // ============================
 // ========= Redis 实例 ===========
 // ============================
+// Redis
 type Redis struct {
 	cli redis.UniversalClient
 }
