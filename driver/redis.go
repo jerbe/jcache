@@ -26,24 +26,28 @@ type Redis struct {
 	cli redis.UniversalClient
 }
 
-type RedisOptions struct {
+type redisOptions struct {
 	cfg *RedisConfig
 	cli redis.UniversalClient
 }
 
-func (opt *RedisOptions) Config(cfg *RedisConfig) *RedisOptions {
+func (opt *redisOptions) Config(cfg *RedisConfig) *redisOptions {
 	opt.cfg = cfg
 	return opt
 }
 
-func (opt *RedisOptions) Client(cli redis.UniversalClient) *RedisOptions {
+func (opt *redisOptions) Client(cli redis.UniversalClient) *redisOptions {
 	opt.cli = cli
 	return opt
 }
 
+func RedisOptions() *redisOptions {
+	return &redisOptions{}
+}
+
 var _ Cache = new(Redis)
 
-func NewRedis(opt *RedisOptions) Cache {
+func NewRedis(opt *redisOptions) Cache {
 	var cli redis.UniversalClient
 	if cfg := opt.cfg; cfg != nil {
 		var dialTimeout = time.Second * 5
@@ -80,15 +84,15 @@ func NewRedis(opt *RedisOptions) Cache {
 	return &Redis{cli: cli}
 }
 
-func NewRedisString(opt *RedisOptions) String {
+func NewRedisString(opt *redisOptions) String {
 	return NewRedis(opt)
 }
 
-func NewRedisHashDriver(opt *RedisOptions) Hash {
+func NewRedisHashDriver(opt *redisOptions) Hash {
 	return NewRedis(opt)
 }
 
-func NewRedisListDriver(opt *RedisOptions) Hash {
+func NewRedisListDriver(opt *redisOptions) Hash {
 	return NewRedis(opt)
 }
 
