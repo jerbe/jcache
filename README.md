@@ -1,4 +1,4 @@
-# JCache 使用Golang开发的多级缓存集成方案
+# JCache 实用的Golang多级缓存集成方案
 
 
 ![](https://img.shields.io/github/issues/jerbe/jcache?color=green)
@@ -17,10 +17,19 @@
 
 现在，一个支持本机内存缓存并支持Redis等分布式缓存服务的集成方案产生了。我们开箱即用，非常方便。
 
-## 架构
-    * 本项目方案采用Redis优先,当Redis无法获取到数据时降级成直接使用本地内存.
-    * golang是一个牛逼的语言,使用map可以写出一大堆很优秀的本地缓存框架
+## 基本架构
 
+现行阶段优先实现功能，未来可能会根据driver的权重指定优先获取顺序。
+当前版本的优先顺序按实例化client时指定的driver顺序。
+```go
+// 实例化一个以redis驱动为优先获取，内存驱动为后取的客户端
+client := jcache.NewClient(driver.NewRedis(), driver.NewMemory())
+
+
+// 实例化一个以内存驱动为优先获取，redis驱动为后取的客户端
+client := jcache.NewClient(driver.NewMemory(),driver.NewRedis())
+```
+![](./assets/架构图.jpeg)
 ## 进度
 
 - [x] Redis支持
@@ -29,6 +38,10 @@
   - [ ] 分布式模式支持
 
 ## 案例
+```shell
+  go get github.com/jerbe/jcache@1.1.3
+```
+
 ```go
 import (
     "time"
