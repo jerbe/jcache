@@ -39,7 +39,7 @@ client := jcache.NewClient(driver.NewMemory(),driver.NewRedis())
 
 ## 案例
 ```shell
-  go get github.com/jerbe/jcache@1.1.3
+  go get github.com/jerbe/jcache@1.1.5
 ```
 
 ```go
