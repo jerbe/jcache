@@ -1,6 +1,6 @@
 module github.com/jerbe/jcache
 
-go 1.18
+go 1.14
 
 require (
 	github.com/bsm/ginkgo/v2 v2.9.5

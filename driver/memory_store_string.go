@@ -20,6 +20,16 @@ type stringValue struct {
 	value string
 }
 
+func newStringValue() *stringValue {
+	defaultExpireAt := time.Now().Add(ValueMaxTTL)
+	return &stringValue{
+		expireValue: expireValue{
+			expireAt: &defaultExpireAt,
+			expired:  false,
+		},
+	}
+}
+
 type stringStore struct {
 	baseStore
 }
@@ -29,66 +39,86 @@ func newStringStore() *stringStore {
 
 	store := &stringStore{
 		baseStore: baseStore{
-			values:       make(map[string]expirable),
+			values:       make(map[string]expireable),
 			rwMutex:      sync.RWMutex{},
 			expireTicker: ticker,
 		},
 	}
 
+	// 定时检测到期key
 	go store.checkExpireTick()
 
 	return store
 }
 
 // Set 设置数据
-func (ss *stringStore) Set(ctx context.Context, key string, data any, expiration time.Duration) error {
+func (ss *stringStore) Set(ctx context.Context, key string, data interface{}, expiration time.Duration) error {
+	ss.rwMutex.Lock()
+	defer ss.rwMutex.Unlock()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
-		value := &stringValue{}
+		val, ok := ss.values[key].(*stringValue)
+		if !ok {
+			val = newStringValue()
+		}
+
 		var err error
-		value.value, err = marshalData(data)
+		val.value, err = marshalData(data)
 		if err != nil {
 			return err
 		}
-		value.SetExpire(expiration)
 
-		ss.rwMutex.Lock()
-		defer ss.rwMutex.Unlock()
+		if ok && expiration != KeepTTL {
+			val.SetExpire(expiration)
+		}
 
-		ss.values[key] = value
+		ss.values[key] = val
 	}
 
 	return nil
 }
 
 // SetNX 设置数据,如果key不存在的话
-func (ss *stringStore) SetNX(ctx context.Context, key string, data any, expiration time.Duration) (bool, error) {
+func (ss *stringStore) SetNX(ctx context.Context, key string, data interface{}, expiration time.Duration) (bool, error) {
 	ss.rwMutex.RLock()
 	defer ss.rwMutex.RUnlock()
-	_, ok := ss.values[key]
-	if ok {
-		return false, nil
-	}
 
-	err := ss.Set(ctx, key, data, expiration)
-	if err != nil {
-		return false, err
-	}
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+		val, ok := ss.values[key].(*stringValue)
+		if ok {
+			return false, nil
+		}
 
-	return true, nil
+		val = newStringValue()
+		var err error
+		val.value, err = marshalData(data)
+		if err != nil {
+			return false, err
+		}
+
+		if ok && expiration != KeepTTL {
+			val.SetExpire(expiration)
+		}
+		ss.values[key] = val
+		return true, nil
+	}
 }
 
 // Get 获取数据
 func (ss *stringStore) Get(ctx context.Context, key string) (string, error) {
+	ss.rwMutex.RLock()
+	defer ss.rwMutex.RUnlock()
+
 	select {
 	case <-ctx.Done():
 		return "", nil
 	default:
-		ss.rwMutex.RLock()
-		defer ss.rwMutex.RUnlock()
-
 		d, ok := ss.values[key]
 		if !ok {
 			return "", MemoryNil
@@ -102,14 +132,15 @@ func (ss *stringStore) Get(ctx context.Context, key string) (string, error) {
 }
 
 // MGet 根据多个Key获取多个值
-func (ss *stringStore) MGet(ctx context.Context, keys ...string) ([]any, error) {
+func (ss *stringStore) MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
+	ss.rwMutex.RLock()
+	defer ss.rwMutex.RUnlock()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
-		ss.rwMutex.RLock()
-		defer ss.rwMutex.RUnlock()
-		var rst = make([]any, 0, len(keys))
+		var rst = make([]interface{}, 0, len(keys))
 		for _, key := range keys {
 			if d, ok := ss.values[key]; ok {
 				if d.IsExpire() {

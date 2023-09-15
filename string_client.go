@@ -14,79 +14,18 @@ import (
 */
 
 type StringClient struct {
-	drivers []driver.String
+	baseClient
 }
 
 func NewStringClient(drivers ...driver.String) *StringClient {
-	return &StringClient{drivers: drivers}
-}
-
-// =======================================================
-// ================= COMMON ==============================
-// =======================================================
-
-// Exists 判断某个Key是否存在
-func (cli *StringClient) Exists(ctx context.Context, keys ...string) (int64, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		val := c.Exists(ctx, keys...)
-		if val.Err() == nil {
-			return val.Result()
-		}
-	}
-	return 0, ErrNoRecord
-}
-
-// Del 删除键
-func (cli *StringClient) Del(ctx context.Context, keys ...string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
+	drvrs := make([]driver.Common, len(drivers))
+	for i := 0; i < len(drivers); i++ {
+		drvrs[i] = drivers[i]
 	}
 
-	for _, c := range cli.drivers {
-		c.Del(ctx, keys...)
+	return &StringClient{
+		baseClient: baseClient{drivers: drvrs},
 	}
-
-	return nil
-}
-
-// Expire 设置某个Key的TTL时长
-func (cli *StringClient) Expire(ctx context.Context, key string, expiration time.Duration) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
-
-	for _, c := range cli.drivers {
-		c.Expire(ctx, key, expiration)
-	}
-
-	// @TODO 其他缓存方法
-	return nil
-}
-
-// ExpireAt 设置某个key在指定时间内到期
-func (cli *StringClient) ExpireAt(ctx context.Context, key string, at time.Time) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
-
-	for _, c := range cli.drivers {
-		c.ExpireAt(ctx, key, &at)
-	}
-
-	// @TODO 其他缓存方法
-	return nil
 }
 
 // =======================================================
@@ -94,7 +33,7 @@ func (cli *StringClient) ExpireAt(ctx context.Context, key string, at time.Time)
 // =======================================================
 
 // Set 设置数据
-func (cli *StringClient) Set(ctx context.Context, key string, data any, expiration time.Duration) error {
+func (cli *StringClient) Set(ctx context.Context, key string, data interface{}, expiration time.Duration) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -103,13 +42,13 @@ func (cli *StringClient) Set(ctx context.Context, key string, data any, expirati
 	}
 
 	for _, c := range cli.drivers {
-		c.Set(ctx, key, data, expiration)
+		c.(driver.String).Set(ctx, key, data, expiration)
 	}
 	return nil
 }
 
 // SetNX 设置数据,如果key不存在的话
-func (cli *StringClient) SetNX(ctx context.Context, key string, data any, expiration time.Duration) error {
+func (cli *StringClient) SetNX(ctx context.Context, key string, data interface{}, expiration time.Duration) error {
 	if len(cli.drivers) == 0 {
 		return ErrNoCacheClient
 	}
@@ -119,7 +58,7 @@ func (cli *StringClient) SetNX(ctx context.Context, key string, data any, expira
 	}
 
 	for _, c := range cli.drivers {
-		c.SetNX(ctx, key, data, expiration)
+		c.(driver.String).SetNX(ctx, key, data, expiration)
 	}
 	return nil
 }
@@ -130,7 +69,7 @@ func (cli *StringClient) Get(ctx context.Context, key string) (string, error) {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val, err := c.Get(ctx, key).Result()
+		val, err := c.(driver.String).Get(ctx, key).Result()
 		if err == nil {
 			return val, err
 		}
@@ -139,12 +78,12 @@ func (cli *StringClient) Get(ctx context.Context, key string) (string, error) {
 }
 
 // MGet 获取多个Keys的值
-func (cli *StringClient) MGet(ctx context.Context, keys ...string) ([]any, error) {
+func (cli *StringClient) MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val, err := c.MGet(ctx, keys...).Result()
+		val, err := c.(driver.String).MGet(ctx, keys...).Result()
 		if err == nil {
 			return val, err
 		}
@@ -153,12 +92,12 @@ func (cli *StringClient) MGet(ctx context.Context, keys ...string) ([]any, error
 }
 
 // GetAndScan 获取并扫描
-func (cli *StringClient) GetAndScan(ctx context.Context, dst any, key string) error {
+func (cli *StringClient) GetAndScan(ctx context.Context, dst interface{}, key string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		err := c.Get(ctx, key).Scan(dst)
+		err := c.(driver.String).Get(ctx, key).Scan(dst)
 		if err == nil {
 			return nil
 		}
@@ -168,12 +107,12 @@ func (cli *StringClient) GetAndScan(ctx context.Context, dst any, key string) er
 }
 
 // MGetAndScan 获取多个Keys的值并扫描进dst中
-func (cli *StringClient) MGetAndScan(ctx context.Context, dst any, keys ...string) error {
+func (cli *StringClient) MGetAndScan(ctx context.Context, dst interface{}, keys ...string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		err := c.MGet(ctx, keys...).Scan(dst)
+		err := c.(driver.String).MGet(ctx, keys...).Scan(dst)
 		if err == nil {
 			return nil
 		}
@@ -187,7 +126,7 @@ func (cli *StringClient) CheckAndGet(ctx context.Context, key string) (string, e
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val, err := c.Get(ctx, key).Result()
+		val, err := c.(driver.String).Get(ctx, key).Result()
 		if err == nil && val == "" {
 			return "", ErrEmpty
 		}
@@ -199,12 +138,12 @@ func (cli *StringClient) CheckAndGet(ctx context.Context, key string) (string, e
 }
 
 // CheckAndScan 获取数据
-func (cli *StringClient) CheckAndScan(ctx context.Context, dst any, key string) error {
+func (cli *StringClient) CheckAndScan(ctx context.Context, dst interface{}, key string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val := c.Get(ctx, key)
+		val := c.(driver.String).Get(ctx, key)
 		if val.Err() == nil && val.Val() == "" {
 			return ErrEmpty
 		}

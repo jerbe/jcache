@@ -24,10 +24,10 @@ type String interface {
 	Common
 
 	// Set 设置数据
-	Set(ctx context.Context, key string, data any, ttl time.Duration) StatusValuer
+	Set(ctx context.Context, key string, data interface{}, ttl time.Duration) StatusValuer
 
 	// SetNX 如果key不存在才设置数据
-	SetNX(ctx context.Context, key string, data any, ttl time.Duration) BoolValuer
+	SetNX(ctx context.Context, key string, data interface{}, ttl time.Duration) BoolValuer
 
 	// Get 获取数据
 	Get(ctx context.Context, key string) StringValuer
@@ -44,7 +44,7 @@ type Hash interface {
 	HDel(ctx context.Context, key string, fields ...string) IntValuer
 
 	// HSet 哈希表设置数据
-	HSet(ctx context.Context, key string, data ...any) IntValuer
+	HSet(ctx context.Context, key string, data ...interface{}) IntValuer
 
 	// HGet 哈希表获取一个数据
 	HGet(ctx context.Context, key string, field string) StringValuer
@@ -73,7 +73,7 @@ type List interface {
 	Trim(ctx context.Context, key string, start, stop int64) StatusValuer
 
 	// Push 将数据推入到列表中
-	Push(ctx context.Context, key string, data ...any) IntValuer
+	Push(ctx context.Context, key string, data ...interface{}) IntValuer
 
 	// Rang 提取列表范围内的数据
 	Rang(ctx context.Context, key string, start, stop int64) StringSliceValuer
@@ -116,7 +116,7 @@ type StatusValuer interface {
 type StringValuer interface {
 	Val() string
 	Err() error
-	Scan(dst any) error
+	Scan(dst interface{}) error
 
 	Bytes() ([]byte, error)
 	Bool() (bool, error)
@@ -141,11 +141,11 @@ type StringSliceValuer interface {
 
 // SliceValuer 切片数值接口
 type SliceValuer interface {
-	Val() []any
+	Val() []interface{}
 	Err() error
 	Scan(dst interface{}) error
 
-	Result() ([]any, error)
+	Result() ([]interface{}, error)
 }
 
 // IntValuer 整形数值接口

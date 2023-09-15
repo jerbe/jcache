@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/jerbe/jcache/driver"
 	"math/rand"
-	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -17,7 +16,22 @@ import (
 */
 
 func newStringClient() *StringClient {
-	return NewStringClient(driver.NewMemoryString())
+
+	/*
+		rdCfg := &driver.RedisConfig{
+			Mode:       "single",
+			MasterName: "",
+			Addrs:      []string{"192.168.31.101:6379"},
+			Database:   "",
+			Username:   "",
+			Password:   "root",
+		}
+		redisDriver := driver.NewRedisOptionsWithConfig(rdCfg)
+
+	*/
+
+	memoryDriver := driver.NewMemoryString()
+	return NewStringClient(memoryDriver)
 }
 
 func BenchmarkStringClient(b *testing.B) {
@@ -35,7 +49,6 @@ func BenchmarkStringClient(b *testing.B) {
 			if err != nil {
 				b.Logf("Set:发生错误:%+v", err)
 			}
-
 			_, err = cli.Get(context.Background(), key)
 			if err != nil {
 				b.Logf("Get:发生错误:%+v", err)
@@ -114,7 +127,7 @@ func TestStringClient_CheckAndScan(t *testing.T) {
 	cli.Set(context.Background(), "you_love", "", time.Hour)
 	type args struct {
 		ctx context.Context
-		dst any
+		dst interface{}
 		key string
 	}
 	tests := []struct {
@@ -155,312 +168,6 @@ func TestStringClient_CheckAndScan(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := cli.CheckAndScan(tt.args.ctx, tt.args.dst, tt.args.key); (err != nil) != tt.wantErr {
 				t.Errorf("CheckAndScan() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestStringClient_Del(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx  context.Context
-		keys []string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			if err := cli.Del(tt.args.ctx, tt.args.keys...); (err != nil) != tt.wantErr {
-				t.Errorf("Del() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestStringClient_Exists(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx  context.Context
-		keys []string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    int64
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			got, err := cli.Exists(tt.args.ctx, tt.args.keys...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Exists() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("Exists() got = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestStringClient_Expire(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx        context.Context
-		key        string
-		expiration time.Duration
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			if err := cli.Expire(tt.args.ctx, tt.args.key, tt.args.expiration); (err != nil) != tt.wantErr {
-				t.Errorf("Expire() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestStringClient_ExpireAt(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx context.Context
-		key string
-		at  time.Time
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			if err := cli.ExpireAt(tt.args.ctx, tt.args.key, tt.args.at); (err != nil) != tt.wantErr {
-				t.Errorf("ExpireAt() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestStringClient_Get(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx context.Context
-		key string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    string
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			got, err := cli.Get(tt.args.ctx, tt.args.key)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Get() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("Get() got = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestStringClient_GetAndScan(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx context.Context
-		dst any
-		key string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			if err := cli.GetAndScan(tt.args.ctx, tt.args.dst, tt.args.key); (err != nil) != tt.wantErr {
-				t.Errorf("GetAndScan() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestStringClient_MGet(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx  context.Context
-		keys []string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    []any
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			got, err := cli.MGet(tt.args.ctx, tt.args.keys...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("MGet() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MGet() got = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestStringClient_MGetAndScan(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx  context.Context
-		dst  any
-		keys []string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			if err := cli.MGetAndScan(tt.args.ctx, tt.args.dst, tt.args.keys...); (err != nil) != tt.wantErr {
-				t.Errorf("MGetAndScan() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestStringClient_Set(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx        context.Context
-		key        string
-		data       any
-		expiration time.Duration
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			if err := cli.Set(tt.args.ctx, tt.args.key, tt.args.data, tt.args.expiration); (err != nil) != tt.wantErr {
-				t.Errorf("Set() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestStringClient_SetNX(t *testing.T) {
-	type fields struct {
-		drivers []driver.String
-	}
-	type args struct {
-		ctx        context.Context
-		key        string
-		data       any
-		expiration time.Duration
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cli := &StringClient{
-				drivers: tt.fields.drivers,
-			}
-			if err := cli.SetNX(tt.args.ctx, tt.args.key, tt.args.data, tt.args.expiration); (err != nil) != tt.wantErr {
-				t.Errorf("SetNX() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

@@ -53,16 +53,18 @@ type Memory struct {
 
 // checkKeyType 检测Key的类型是否正确
 func (mc *Memory) checkKeyType(key string, useFor MemoryDriverStoreType) (bool, error) {
-	mc.ss.rwMutex.RLock()
-	defer mc.ss.rwMutex.RUnlock()
-	_, ok := mc.ss.values[key]
-	if ok {
-		if useFor != MemoryDriverStoreTypeString {
-			return false, fmt.Errorf("该Key已经是String类型,不可用设置成%s类型", useFor)
-		}
-		return true, nil
+	if mc.ss.keyExists(key) && useFor != MemoryDriverStoreTypeString {
+		return false, fmt.Errorf("该Key已经是'%s'类型,不可用设置成'%s'类型", MemoryDriverStoreTypeString, useFor)
 	}
-	return false, nil
+
+	if mc.hs.keyExists(key) && useFor != MemoryDriverStoreTypeHash {
+		return false, fmt.Errorf("该Key已经是'%s'类型,不可用设置成'%s'类型", MemoryDriverStoreTypeHash, useFor)
+	}
+
+	if mc.ls.keyExists(key) && useFor != MemoryDriverStoreTypeList {
+		return false, fmt.Errorf("该Key已经是'%s'类型,不可用设置成'%s'类型", MemoryDriverStoreTypeList, useFor)
+	}
+	return true, nil
 }
 
 // ================================================================================================
@@ -146,7 +148,7 @@ func (mc *Memory) ExpireAt(ctx context.Context, key string, at *time.Time) BoolV
 // ================================================================================================
 
 // Set 设置数据
-func (mc *Memory) Set(ctx context.Context, key string, data any, expiration time.Duration) StatusValuer {
+func (mc *Memory) Set(ctx context.Context, key string, data interface{}, expiration time.Duration) StatusValuer {
 	val := new(redis.StatusCmd)
 	// 检测该Key是否被其他类型用了
 	if _, err := mc.checkKeyType(key, MemoryDriverStoreTypeString); err != nil {
@@ -163,7 +165,7 @@ func (mc *Memory) Set(ctx context.Context, key string, data any, expiration time
 }
 
 // SetNX 设置数据,如果key不存在的话
-func (mc *Memory) SetNX(ctx context.Context, key string, data any, expiration time.Duration) BoolValuer {
+func (mc *Memory) SetNX(ctx context.Context, key string, data interface{}, expiration time.Duration) BoolValuer {
 	val := new(redis.BoolCmd)
 	// 检测该Key是否被其他类型用了
 	if _, err := mc.checkKeyType(key, MemoryDriverStoreTypeString); err != nil {
@@ -223,7 +225,7 @@ func (mc *Memory) HDel(ctx context.Context, key string, fields ...string) IntVal
 }
 
 // HSet 哈希表设置数据
-func (mc *Memory) HSet(ctx context.Context, key string, data ...any) IntValuer {
+func (mc *Memory) HSet(ctx context.Context, key string, data ...interface{}) IntValuer {
 	val := new(redis.IntCmd)
 	cnt, err := mc.hs.HSet(ctx, key, data...)
 	if err == nil {
@@ -307,7 +309,7 @@ func (mc *Memory) Trim(ctx context.Context, key string, start, stop int64) Statu
 }
 
 // Push 将数据推入到列表中
-func (mc *Memory) Push(ctx context.Context, key string, data ...any) IntValuer {
+func (mc *Memory) Push(ctx context.Context, key string, data ...interface{}) IntValuer {
 	val := new(redis.IntCmd)
 	v, err := mc.ls.Push(ctx, key, data...)
 	if err == nil {

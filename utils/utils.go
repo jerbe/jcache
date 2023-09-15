@@ -9,7 +9,7 @@ import "reflect"
 */
 
 // IsNil 检测是否是真nil值
-func IsNil(v any) bool {
+func IsNil(v interface{}) bool {
 	if v != nil {
 		// 如果目标不是xx类型,则返回
 		typ := reflect.TypeOf(v)

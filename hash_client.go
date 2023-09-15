@@ -3,7 +3,6 @@ package jcache
 import (
 	"context"
 	"github.com/jerbe/jcache/driver"
-	"time"
 )
 
 /**
@@ -13,79 +12,18 @@ import (
 */
 
 type HashClient struct {
-	drivers []driver.Hash
+	baseClient
 }
 
 func NewHashClient(drivers ...driver.Hash) *HashClient {
-	return &HashClient{drivers: drivers}
-}
-
-// =======================================================
-// ================= COMMON ==============================
-// =======================================================
-
-// Exists 判断某个Key是否存在
-func (cli *HashClient) Exists(ctx context.Context, keys ...string) (int64, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		val := c.Exists(ctx, keys...)
-		if val.Err() == nil {
-			return val.Result()
-		}
-	}
-	return 0, ErrNoRecord
-}
-
-// Del 删除键
-func (cli *HashClient) Del(ctx context.Context, keys ...string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
+	drvrs := make([]driver.Common, len(drivers))
+	for i := 0; i < len(drivers); i++ {
+		drvrs[i] = drivers[i]
 	}
 
-	for _, c := range cli.drivers {
-		c.Del(ctx, keys...)
+	return &HashClient{
+		baseClient: baseClient{drivers: drvrs},
 	}
-
-	return nil
-}
-
-// Expire 设置某个Key的TTL时长
-func (cli *HashClient) Expire(ctx context.Context, key string, expiration time.Duration) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
-
-	for _, c := range cli.drivers {
-		c.Expire(ctx, key, expiration)
-	}
-
-	// @TODO 其他缓存方法
-	return nil
-}
-
-// ExpireAt 设置某个key在指定时间内到期
-func (cli *HashClient) ExpireAt(ctx context.Context, key string, at time.Time) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
-
-	for _, c := range cli.drivers {
-		c.ExpireAt(ctx, key, &at)
-	}
-
-	// @TODO 其他缓存方法
-	return nil
 }
 
 // =======================================================
@@ -93,7 +31,17 @@ func (cli *HashClient) ExpireAt(ctx context.Context, key string, at time.Time) e
 // =======================================================
 
 // HSet 写入hash数据
-func (cli *HashClient) HSet(ctx context.Context, key string, values ...any) error {
+// 接受以下格式的值：
+// HSet("myhash", "key1", "value1", "key2", "value2")
+//
+// HSet("myhash", []string{"key1", "value1", "key2", "value2"})
+//
+// HSet("myhash", map[string]interface{}{"key1": "value1", "key2": "value2"})
+// 使用“redis”标签播放结构。 type MyHash struct { Key1 string `redis:"key1"`; Key2 int `redis:"key2"` }
+//
+// HSet("myhash", MyHash{"value1", "value2"}) 警告：redis-server >= 4.0
+// 对于struct，可以是结构体指针类型，我们只解析标签为redis的字段。如果你不想读取该字段，可以使用 `redis:"-"` 标志来忽略它，或者不需要设置 redis 标签。对于结构体字段的类型，我们只支持简单的数据类型：string、int/uint(8,16,32,64)、float(32,64)、time.Time(to RFC3339Nano)、time.Duration(to Nanoseconds) ），如果是其他更复杂或者自定义的数据类型，请实现encoding.BinaryMarshaler接口。
+func (cli *HashClient) HSet(ctx context.Context, key string, values ...interface{}) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -102,7 +50,7 @@ func (cli *HashClient) HSet(ctx context.Context, key string, values ...any) erro
 	}
 
 	for _, c := range cli.drivers {
-		c.HSet(ctx, key, values)
+		c.(driver.Hash).HSet(ctx, key, values)
 	}
 
 	return nil
@@ -114,7 +62,7 @@ func (cli *HashClient) HVals(ctx context.Context, key string) ([]string, error) 
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		result, err := c.HVals(ctx, key).Result()
+		result, err := c.(driver.Hash).HVals(ctx, key).Result()
 		if err == nil {
 			return result, nil
 		}
@@ -130,7 +78,7 @@ func (cli *HashClient) HKeys(ctx context.Context, key string) ([]string, error) 
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		result, err := c.HKeys(ctx, key).Result()
+		result, err := c.(driver.Hash).HKeys(ctx, key).Result()
 		if err == nil {
 			return result, nil
 		}
@@ -140,12 +88,12 @@ func (cli *HashClient) HKeys(ctx context.Context, key string) ([]string, error) 
 }
 
 // HKeysAndScan 获取Hash表的所有键并扫描到dst中
-func (cli *HashClient) HKeysAndScan(ctx context.Context, dst any, key string) error {
+func (cli *HashClient) HKeysAndScan(ctx context.Context, dst interface{}, key string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val := c.HKeys(ctx, key)
+		val := c.(driver.Hash).HKeys(ctx, key)
 		if val.Err() == nil && val.ScanSlice(dst) == nil {
 			return nil
 		}
@@ -160,7 +108,7 @@ func (cli *HashClient) HLen(ctx context.Context, key string) (int64, error) {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val := c.HLen(ctx, key)
+		val := c.(driver.Hash).HLen(ctx, key)
 		if val.Err() == nil {
 			return val.Val(), nil
 		}
@@ -175,7 +123,7 @@ func (cli *HashClient) HGet(ctx context.Context, key, field string) (string, err
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val := c.HGet(ctx, key, field)
+		val := c.(driver.Hash).HGet(ctx, key, field)
 		if val.Err() == nil {
 			return val.Val(), nil
 		}
@@ -185,12 +133,12 @@ func (cli *HashClient) HGet(ctx context.Context, key, field string) (string, err
 }
 
 // HGetAndScan 获取Hash表指定字段的值
-func (cli *HashClient) HGetAndScan(ctx context.Context, dst any, key, field string) error {
+func (cli *HashClient) HGetAndScan(ctx context.Context, dst interface{}, key, field string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val := c.HGet(ctx, key, field)
+		val := c.(driver.Hash).HGet(ctx, key, field)
 		if val.Err() == nil && val.Scan(dst) == nil {
 			return nil
 		}
@@ -199,12 +147,12 @@ func (cli *HashClient) HGetAndScan(ctx context.Context, dst any, key, field stri
 }
 
 // HMGet 获取Hash表指定字段的值
-func (cli *HashClient) HMGet(ctx context.Context, key string, fields ...string) ([]any, error) {
+func (cli *HashClient) HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		result, err := c.HMGet(ctx, key, fields...).Result()
+		result, err := c.(driver.Hash).HMGet(ctx, key, fields...).Result()
 		if err == nil {
 			return result, nil
 		}
@@ -214,12 +162,12 @@ func (cli *HashClient) HMGet(ctx context.Context, key string, fields ...string) 
 }
 
 // HMGetAndScan 获取Hash表指定字段的值并扫描进入到dst中
-func (cli *HashClient) HMGetAndScan(ctx context.Context, dst any, key string, fields ...string) error {
+func (cli *HashClient) HMGetAndScan(ctx context.Context, dst interface{}, key string, fields ...string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val := c.HMGet(ctx, key, fields...)
+		val := c.(driver.Hash).HMGet(ctx, key, fields...)
 		if val.Err() == nil && val.Scan(dst) == nil {
 			return nil
 		}
@@ -229,12 +177,12 @@ func (cli *HashClient) HMGetAndScan(ctx context.Context, dst any, key string, fi
 }
 
 // HValsAndScan 获取Hash表的所有值并扫如dst中
-func (cli *HashClient) HValsAndScan(ctx context.Context, dst any, key string) error {
+func (cli *HashClient) HValsAndScan(ctx context.Context, dst interface{}, key string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val := c.HVals(ctx, key)
+		val := c.(driver.Hash).HVals(ctx, key)
 		if val.Err() == nil && val.ScanSlice(dst) == nil {
 			return nil
 		}
@@ -254,7 +202,7 @@ func (cli *HashClient) HDel(ctx context.Context, key string, fields ...string) e
 
 	for _, c := range cli.drivers {
 		// @TODO 失败重做?
-		c.HDel(ctx, key, fields...)
+		c.(driver.Hash).HDel(ctx, key, fields...)
 	}
 	return nil
 }

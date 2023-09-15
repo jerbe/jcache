@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -22,35 +23,37 @@ type RedisConfig struct {
 // ============================
 // ========= Redis 实例 ===========
 // ============================
-// Redis
+
+// Redis 驱动器
 type Redis struct {
 	cli redis.UniversalClient
 }
 
-type redisOptions struct {
-	cfg *RedisConfig
-	cli redis.UniversalClient
+type RedisOptions struct {
+	Config *RedisConfig
+	Client redis.UniversalClient
 }
 
-func (opt *redisOptions) Config(cfg *RedisConfig) *redisOptions {
-	opt.cfg = cfg
-	return opt
+func NewRedisOptionsWithConfig(cfg *RedisConfig) *RedisOptions {
+	return &RedisOptions{Config: cfg}
 }
 
-func (opt *redisOptions) Client(cli redis.UniversalClient) *redisOptions {
-	opt.cli = cli
-	return opt
-}
-
-func RedisOptions() *redisOptions {
-	return &redisOptions{}
+func NewRedisOptionsWithClient(cli redis.UniversalClient) *RedisOptions {
+	return &RedisOptions{Client: cli}
 }
 
 var _ Cache = new(Redis)
 
-func NewRedis(opt *redisOptions) Cache {
-	var cli redis.UniversalClient
-	if cfg := opt.cfg; cfg != nil {
+func NewRedis(opt *RedisOptions) Cache {
+	r := &Redis{}
+
+	if opt.Client != nil {
+		r.cli = opt.Client
+		return r
+	}
+
+	if cfg := opt.Config; cfg != nil {
+		var cli redis.UniversalClient
 		var dialTimeout = time.Second * 5
 		switch strings.ToLower(cfg.Mode) {
 		case "sentinel": // 哨兵模式
@@ -79,21 +82,22 @@ func NewRedis(opt *redisOptions) Cache {
 				DialTimeout: dialTimeout,
 			})
 		}
-	} else if opt.cli != nil {
-		cli = opt.cli
+		r.cli = cli
+		return r
 	}
-	return &Redis{cli: cli}
+
+	panic(errors.New("redis driver: invalid options 'Client' and 'Config' is nil"))
 }
 
-func NewRedisString(opt *redisOptions) String {
+func NewRedisString(opt *RedisOptions) String {
 	return NewRedis(opt)
 }
 
-func NewRedisHashDriver(opt *redisOptions) Hash {
+func NewRedisHashDriver(opt *RedisOptions) Hash {
 	return NewRedis(opt)
 }
 
-func NewRedisListDriver(opt *redisOptions) Hash {
+func NewRedisListDriver(opt *RedisOptions) Hash {
 	return NewRedis(opt)
 }
 
@@ -126,12 +130,12 @@ func (r *Redis) ExpireAt(ctx context.Context, key string, at *time.Time) BoolVal
 // ============================
 
 // Set 设置数据
-func (r *Redis) Set(ctx context.Context, key string, data any, ttl time.Duration) StatusValuer {
+func (r *Redis) Set(ctx context.Context, key string, data interface{}, ttl time.Duration) StatusValuer {
 	return r.cli.Set(ctx, key, data, ttl)
 }
 
 // SetNX 如果key不存在才设置数据
-func (r *Redis) SetNX(ctx context.Context, key string, data any, ttl time.Duration) BoolValuer {
+func (r *Redis) SetNX(ctx context.Context, key string, data interface{}, ttl time.Duration) BoolValuer {
 	return r.cli.SetNX(ctx, key, data, ttl)
 }
 
@@ -155,7 +159,7 @@ func (r *Redis) HDel(ctx context.Context, key string, fields ...string) IntValue
 }
 
 // HSet 哈希表设置数据
-func (r *Redis) HSet(ctx context.Context, key string, data ...any) IntValuer {
+func (r *Redis) HSet(ctx context.Context, key string, data ...interface{}) IntValuer {
 	return r.cli.HSet(ctx, key, data...)
 }
 
@@ -197,7 +201,7 @@ func (r *Redis) Trim(ctx context.Context, key string, start, stop int64) StatusV
 }
 
 // Push 将数据推入到列表中
-func (r *Redis) Push(ctx context.Context, key string, data ...any) IntValuer {
+func (r *Redis) Push(ctx context.Context, key string, data ...interface{}) IntValuer {
 	return r.cli.LPush(ctx, key, data)
 }
 
