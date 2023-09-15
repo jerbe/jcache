@@ -1,8 +1,9 @@
 package driver
 
 import (
-	"container/list"
 	"context"
+	"errors"
+	"sort"
 	"sync"
 	"time"
 )
@@ -18,7 +19,7 @@ type listValue struct {
 	expireValue
 
 	// value 值
-	value *list.List
+	value []string
 }
 
 func newListValue() *listValue {
@@ -28,7 +29,7 @@ func newListValue() *listValue {
 			expireAt: &defaultExpireAt,
 			expired:  false,
 		},
-		value: new(list.List),
+		value: make([]string, 0, 1<<8), // 预先进行容量设定,防止append时的扩容耗能
 	}
 }
 
@@ -64,9 +65,14 @@ func (s *listStore) Push(ctx context.Context, key string, data ...interface{}) (
 		if !ok {
 			val = newListValue()
 		}
+		dataLen := len(data)
 
-		var result = make([]string, 0, len(data))
-		for i := 0; i < len(data); i++ {
+		if dataLen == 0 {
+			return int64(len(val.value)), errors.New("the number of parameters is incorrect")
+		}
+
+		var result = make([]string, 0, dataLen)
+		for i := 0; i < dataLen; i++ {
 			marshal, err := marshalData(data[i])
 			if err != nil {
 				return 0, err
@@ -74,13 +80,10 @@ func (s *listStore) Push(ctx context.Context, key string, data ...interface{}) (
 			result = append(result, marshal)
 		}
 
-		for i := 0; i < len(result); i++ {
-			val.value.PushFront(result[i])
-		}
+		val.value = append(val.value, result...)
 
 		s.values[key] = val
-
-		return int64(val.value.Len()), nil
+		return int64(len(val.value)), nil
 	}
 }
 
@@ -101,41 +104,51 @@ func (s *listStore) Trim(ctx context.Context, key string, start, stop int64) err
 			return nil
 		}
 
-		listLen := int64(val.value.Len())
+		if stop-start < 0 {
+			val.value = make([]string, 0)
+			return nil
+		}
+
+		listLen := int64(len(val.value))
 		if listLen == 0 {
 			return nil
 		}
 
 		// 提取正确的索引位置
 		if start < 0 {
-			// len = 10, start = -1
-			// start = 9
 			start = listLen + start
+		}
+
+		if start < 0 {
+			start = 0
+		}
+
+		if start >= listLen {
+			val.value = make([]string, 0)
+			return nil
 		}
 
 		if stop < 0 {
 			stop = listLen + stop
 		}
-
-		elem := val.value.Front()
-		index := int64(0)
-
-		diffLen := (stop - start) + 1
-		if diffLen <= 0 {
-			val.value = new(list.List)
+		if stop < 0 {
+			val.value = make([]string, 0)
 			return nil
 		}
 
-		// 不在范围内的数据
-		for elem != nil {
-			next := elem.Next()
-			if index < start || index > stop {
-				val.value.Remove(elem)
-			}
-			elem = next
-			index++
+		if stop >= listLen {
+			stop = listLen - 1
 		}
 
+		start = listLen - start - 1
+		stop = listLen - stop
+		if start > stop {
+			stop, start = start, stop
+		}
+
+		result := make([]string, stop-start+1, stop-start+1)
+		copy(result, val.value[start-1:stop])
+		val.value = result
 		return nil
 	}
 }
@@ -154,50 +167,59 @@ func (s *listStore) Rang(ctx context.Context, key string, start, stop int64) ([]
 			return []string{}, nil
 		}
 
-		listLen := int64(val.value.Len())
+		if stop-start < 0 {
+			return []string{}, nil
+		}
+
+		listLen := int64(len(val.value))
 		if listLen == 0 {
 			return []string{}, nil
 		}
 
 		// 提取正确的索引位置
 		if start < 0 {
-			// len = 10, start = -1
-			// start = 9
 			start = listLen + start
+		}
+
+		if start < 0 {
+			start = 0
+		}
+
+		if start >= listLen {
+			return []string{}, nil
 		}
 
 		if stop < 0 {
 			stop = listLen + stop
 		}
-
-		diffLen := int(stop-start) + 1
-		if diffLen < 0 {
-			diffLen = 0
-		}
-
-		if diffLen == 0 {
+		if stop < 0 {
 			return []string{}, nil
 		}
 
-		elem := val.value.Front()
-		index := int64(0)
-		result := make([]string, 0, diffLen)
-		// 丢弃前面部分
-		for elem != nil {
-			if index >= start && index <= stop {
-				result = append(result, elem.Value.(string))
-			}
-			elem = elem.Next()
-			index++
+		if stop >= listLen {
+			stop = listLen - 1
 		}
+
+		start = listLen - start
+		stop = listLen - stop
+		if start > stop {
+			stop, start = start, stop
+		}
+
+		result := make([]string, stop-start+1, stop-start+1)
+		copy(result, val.value[start-1:stop])
+		sort.Slice(result, func(i, j int) bool {
+			return true
+		})
+
 		return result, nil
 	}
 }
 
 // Pop 推出列表尾的最后数据
 func (s *listStore) Pop(ctx context.Context, key string) (string, error) {
-	s.rwMutex.RLock()
-	defer s.rwMutex.RUnlock()
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
 
 	select {
 	case <-ctx.Done():
@@ -208,19 +230,23 @@ func (s *listStore) Pop(ctx context.Context, key string) (string, error) {
 			return "", MemoryNil
 		}
 
-		elem := val.value.Back()
-		if elem == nil {
+		listLen := len(val.value)
+
+		if listLen == 0 {
 			return "", MemoryNil
 		}
-		val.value.Remove(elem)
-		return elem.Value.(string), nil
+
+		back := val.value[0]
+
+		val.value = val.value[1:listLen]
+		return back, nil
 	}
 }
 
 // Shift 推出列表头的第一个数据
 func (s *listStore) Shift(ctx context.Context, key string) (string, error) {
-	s.rwMutex.RLock()
-	defer s.rwMutex.RUnlock()
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
 
 	select {
 	case <-ctx.Done():
@@ -231,11 +257,14 @@ func (s *listStore) Shift(ctx context.Context, key string) (string, error) {
 			return "", MemoryNil
 		}
 
-		elem := val.value.Front()
-		if elem == nil {
+		listLen := len(val.value)
+
+		if listLen == 0 {
 			return "", MemoryNil
 		}
-		val.value.Remove(elem)
-		return elem.Value.(string), nil
+
+		first := val.value[listLen-1]
+		val.value = val.value[0 : listLen-1]
+		return first, nil
 	}
 }

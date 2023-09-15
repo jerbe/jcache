@@ -2,8 +2,12 @@ package driver
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"reflect"
+	"strconv"
 	"testing"
+	"time"
 )
 
 /*
@@ -109,7 +113,7 @@ func Test_listStore_Pop(t *testing.T) {
 
 func Test_listStore_Rang(t *testing.T) {
 	s := newListStore()
-	s.Push(context.Background(), "key", "0", "1", "2", "3", "4", "5") // [5,4,3,2,1,0]
+	s.Push(context.Background(), "key", "x", "1", "你好", "3", "g", "5") // [5,g,3,你好,1,x]
 	type args struct {
 		ctx   context.Context
 		key   string
@@ -141,7 +145,7 @@ func Test_listStore_Rang(t *testing.T) {
 				start: 1,
 				stop:  3,
 			},
-			want:    []string{"4", "3", "2"},
+			want:    []string{"g", "3", "你好"},
 			wantErr: false,
 		},
 		{
@@ -152,7 +156,7 @@ func Test_listStore_Rang(t *testing.T) {
 				start: -2,
 				stop:  -1,
 			},
-			want:    []string{"1", "0"},
+			want:    []string{"1", "x"},
 			wantErr: false,
 		},
 		{
@@ -169,7 +173,6 @@ func Test_listStore_Rang(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			got, err := s.Rang(tt.args.ctx, tt.args.key, tt.args.start, tt.args.stop)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Rang() error = %v, wantErr %v", err, tt.wantErr)
@@ -300,4 +303,100 @@ func Test_listStore_Trim(t *testing.T) {
 			t.Log("rang 2", r, err)
 		})
 	}
+}
+
+func Benchmark_listStore_Push(b *testing.B) {
+	b.SkipNow()
+	s := newListStore()
+	b.SetParallelism(10000)
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			var key = strconv.FormatInt(rand.Int63n(100), 10)
+			var value = strconv.FormatInt(rand.Int63(), 10)
+			s.Push(context.Background(), key, value)
+		}
+	})
+
+}
+
+func Benchmark_listStore_Pop(b *testing.B) {
+	b.SkipNow()
+	s := newListStore()
+	b.SetParallelism(10000)
+
+	b.StopTimer()
+	b.Log("init testing...")
+	for i := 0; i < 10000000; i++ {
+		var key = strconv.FormatInt(rand.Int63n(100), 10)
+		var value = strconv.FormatInt(rand.Int63(), 10)
+		s.Push(context.Background(), key, value)
+	}
+	b.StartTimer()
+	b.Log("start testing...")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			var key = strconv.FormatInt(rand.Int63n(100), 10)
+			s.Pop(context.Background(), key)
+
+		}
+	})
+}
+
+func Benchmark_listStore_Shift(b *testing.B) {
+	b.SkipNow()
+	s := newListStore()
+	b.SetParallelism(10000)
+
+	b.StopTimer()
+	for i := 0; i < 10000000; i++ {
+		var key = strconv.FormatInt(rand.Int63n(100), 10)
+		var value = strconv.FormatInt(rand.Int63(), 10)
+		s.Push(context.Background(), key, value)
+	}
+
+	b.StartTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			var key = strconv.FormatInt(rand.Int63n(100), 10)
+			s.Shift(context.Background(), key)
+
+		}
+	})
+}
+
+func Benchmark_listStore_Rang(b *testing.B) {
+	s := newListStore()
+	b.SetParallelism(10000)
+
+	b.StopTimer()
+	for i := 0; i < 10000000; i++ {
+		var key = strconv.FormatInt(rand.Int63n(100), 10)
+		var value = strconv.FormatInt(rand.Int63(), 10)
+		s.Push(context.Background(), key, value)
+	}
+
+	b.StartTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			var key = strconv.FormatInt(rand.Int63n(100), 10)
+			s.Rang(context.Background(), key, rand.Int63n(10000000), rand.Int63n(10000000))
+		}
+	})
+}
+
+func Test_listStore_X(t *testing.T) {
+	s := newListStore()
+	now := time.Now()
+	for i := 0; i < 1000000; i++ {
+		var key = strconv.FormatInt(rand.Int63n(100), 10)
+		var value = strconv.FormatInt(rand.Int63(), 10)
+		s.Push(context.Background(), key, value)
+	}
+	fmt.Println("初始化耗时", time.Now().Sub(now))
+	now = time.Now()
+	var key = strconv.FormatInt(rand.Int63n(100), 10)
+	s.Rang(context.Background(), key, rand.Int63n(10000000), rand.Int63n(10000000))
+
+	fmt.Println("获取耗时:", time.Now().Sub(now))
+
 }
