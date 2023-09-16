@@ -557,3 +557,184 @@ func Test_hashStore_HVals(t *testing.T) {
 		})
 	}
 }
+
+func Test_hashStore_HGetAll(t *testing.T) {
+	s := newHashStore()
+
+	type HashData struct {
+		Today string `redis:"today"`
+
+		Yesterday string `redis:"yesterday"`
+
+		Tomorrow string `memory:"tomorrow,omitempty"`
+	}
+
+	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", []string{"f3", "v3", "f4", "v4"}, map[string]string{"f5": "v5", "f6": "v6"}, HashData{Today: "今天", Yesterday: "昨天", Tomorrow: ""})
+
+	type args struct {
+		ctx context.Context
+		key string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    map[string]string
+		wantErr bool
+	}{
+		{
+			name: "获取成功",
+			args: args{
+				ctx: context.Background(),
+				key: "key",
+			},
+			want: map[string]string{
+				"f1":        "v1",
+				"f2":        "v2",
+				"f3":        "v3",
+				"f4":        "v4",
+				"f5":        "v5",
+				"f6":        "v6",
+				"today":     "今天",
+				"yesterday": "昨天",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.HGetAll(tt.args.ctx, tt.args.key)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("HGetAll() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			//
+			//// 顺序无解,map遍历是无序的
+			//sort.Slice(got, func(i, j int) bool {
+			//	return got[i] < got[j]
+			//})
+			//sort.Slice(tt.want, func(i, j int) bool {
+			//	return tt.want[i] < tt.want[j]
+			//})
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("HGetAll() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_hashStore_HSetNX(t *testing.T) {
+	s := newHashStore()
+
+	type args struct {
+		ctx   context.Context
+		key   string
+		field string
+		data  interface{}
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "设置成功",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				field: "f1",
+				data:  "v1",
+			},
+			want: true,
+		},
+		{
+			name: "设置成功",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				field: "f1",
+				data:  "v1",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.HSetNX(tt.args.ctx, tt.args.key, tt.args.field, tt.args.data)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("HGetAll() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("HGetAll() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_hashStore_HExists(t *testing.T) {
+	s := newHashStore()
+	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2")
+
+	type args struct {
+		ctx   context.Context
+		key   string
+		field string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "获取成功,f1",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				field: "f1",
+			},
+			want: true,
+		},
+		{
+			name: "设置成功,f2",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				field: "f2",
+			},
+			want: true,
+		},
+		{
+			name: "设置失败,f3",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				field: "f3",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.HExists(tt.args.ctx, tt.args.key, tt.args.field)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("HGetAll() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			//
+			//// 顺序无解,map遍历是无序的
+			//sort.Slice(got, func(i, j int) bool {
+			//	return got[i] < got[j]
+			//})
+			//sort.Slice(tt.want, func(i, j int) bool {
+			//	return tt.want[i] < tt.want[j]
+			//})
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("HGetAll() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

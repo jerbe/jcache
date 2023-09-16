@@ -1,7 +1,7 @@
 package jcache
 
 import (
-	"errors"
+	"github.com/jerbe/go-errors"
 )
 
 /**

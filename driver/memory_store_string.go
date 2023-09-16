@@ -140,16 +140,13 @@ func (ss *stringStore) MGet(ctx context.Context, keys ...string) ([]interface{},
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
-		var rst = make([]interface{}, 0, len(keys))
-		for _, key := range keys {
+		var rst = make([]interface{}, len(keys), len(keys))
+		for i, key := range keys {
 			if d, ok := ss.values[key]; ok {
 				if d.IsExpire() {
-					rst = append(rst, nil)
 					continue
 				}
-				rst = append(rst, d.(*stringValue).value)
-			} else {
-				rst = append(rst, nil)
+				rst[i] = d.(*stringValue).value
 			}
 		}
 		return rst, nil

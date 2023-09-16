@@ -1,0 +1,41 @@
+syntax = "proto3";
+package proto;
+
+service String {
+  rpc Do(stream DoRequest) returns (stream DoResponse){}
+}
+
+enum Action {
+    Del = 0;
+
+    Set = 21;
+    SetNX = 22;
+    MSet = 23;
+    Get = 24;
+    MGet = 25;
+
+    HDel = 40;
+    HSet = 41;
+    HExists = 42;
+    HGet = 43;
+    HMSet = 44;
+    HMGet = 45;
+    HLen = 56;
+    HSetNX= 57;
+    HKeys = 58;
+    HVals = 49;
+    HGetAll = 50;
+
+
+    }
+
+// DoRequest 执行请求参数
+message DoRequest {
+  string action = 1;
+  repeated string message = 2;
+}
+
+// DoResponse 执行返回参数
+message DoResponse {
+  string message = 1;
+}

@@ -29,11 +29,18 @@ const (
 )
 
 func NewMemory() Cache {
+	ss := newStringStore()
+	hs := newHashStore()
+	ls := newListStore()
+
+	storeList := []baseStoreer{ss, hs, ls}
+
 	return &Memory{
-		rwMu: sync.RWMutex{},
-		ss:   newStringStore(),
-		hs:   newHashStore(),
-		ls:   newListStore(),
+		rwMu:      sync.RWMutex{},
+		storeList: storeList,
+		ss:        ss,
+		hs:        hs,
+		ls:        ls,
 	}
 }
 
@@ -44,12 +51,16 @@ func NewMemoryString() String {
 type Memory struct {
 	rwMu sync.RWMutex
 
+	storeList []baseStoreer
+
 	ss *stringStore
 
 	hs *hashStore
 
 	ls *listStore
 }
+
+var _ Cache = new(Memory)
 
 // checkKeyType 检测Key的类型是否正确
 func (mc *Memory) checkKeyType(key string, useFor MemoryDriverStoreType) (bool, error) {
@@ -75,19 +86,19 @@ func (mc *Memory) checkKeyType(key string, useFor MemoryDriverStoreType) (bool, 
 func (mc *Memory) Exists(ctx context.Context, keys ...string) IntValuer {
 	mc.rwMu.RLock()
 	defer mc.rwMu.RUnlock()
-
 	result := &redis.IntCmd{}
+
 	cnt := int64(0)
-	// 遍历字符串存储
-	_, err := mc.ss.Exists(ctx, keys...)
-	if err == nil {
-		cnt++
+	for _, store := range mc.storeList {
+		i, err := store.Exists(ctx, keys...)
+		if err != nil {
+			result.SetErr(err)
+			return result
+		}
+		cnt += i
 	}
 
 	result.SetVal(cnt)
-	// 遍历Hash存储
-
-	// 遍历List存储
 	return result
 }
 
@@ -95,51 +106,77 @@ func (mc *Memory) Exists(ctx context.Context, keys ...string) IntValuer {
 func (mc *Memory) Del(ctx context.Context, keys ...string) IntValuer {
 	result := &redis.IntCmd{}
 	cnt := int64(0)
-	// 遍历字符串存储
-	delcnt, err := mc.ss.Del(ctx, keys...)
-	if err == nil {
-		cnt += delcnt
+
+	for _, store := range mc.storeList {
+		i, err := store.Del(ctx, keys...)
+		if err != nil {
+			result.SetErr(err)
+			return result
+		}
+		cnt += i
 	}
 
 	result.SetVal(cnt)
-
-	// 遍历Hash存储
-
-	// 遍历List存储
 	return result
 }
 
 // Expire 设置某个key的存活时间
 func (mc *Memory) Expire(ctx context.Context, key string, ttl time.Duration) BoolValuer {
 	result := &redis.BoolCmd{}
-	// 遍历字符串存储
-	// Todo 错误收集
-	b, err := mc.ss.Expire(ctx, key, ttl)
-	if err == nil && b {
-		result.SetVal(true)
-		return result
+
+	for _, store := range mc.storeList {
+		// Todo 错误收集
+		b, err := store.Expire(ctx, key, ttl)
+		if err != nil {
+			result.SetErr(err)
+			return result
+		}
+
+		if b {
+			result.SetVal(true)
+			return result
+		}
 	}
 
-	// 遍历Hash存储
-
-	// 遍历List存储
 	return result
 }
 
 // ExpireAt 设置某个key在指定时间内到期
 func (mc *Memory) ExpireAt(ctx context.Context, key string, at *time.Time) BoolValuer {
 	result := &redis.BoolCmd{}
-	// 遍历字符串存储
-	// Todo 错误收集
-	b, err := mc.ss.ExpireAt(ctx, key, *at)
-	if err == nil && b {
-		result.SetVal(true)
-		return result
+
+	for _, store := range mc.storeList {
+		// Todo 错误收集
+		b, err := store.ExpireAt(ctx, key, *at)
+		if err != nil {
+			result.SetErr(err)
+			return result
+		}
+
+		if b {
+			result.SetVal(true)
+			return result
+		}
 	}
+	return result
+}
 
-	// 遍历Hash存储
-
-	// 遍历List存储
+// Persist 删除key的过期时间,并设置成持久性
+// 注意,持久化后最长也也不会超过 ValueMaxTTL
+func (mc *Memory) Persist(ctx context.Context, key string) BoolValuer {
+	result := &redis.BoolCmd{}
+	for _, store := range mc.storeList {
+		// Todo 错误收集
+		b, err := store.Persist(ctx, key)
+		if err != nil {
+			result.SetErr(err)
+			return result
+		}
+		if b {
+			result.SetVal(true)
+			return result
+		}
+	}
 	return result
 }
 
@@ -213,6 +250,15 @@ func (mc *Memory) MGet(ctx context.Context, keys ...string) SliceValuer {
 // ======================================== HASH ==================================================
 // ================================================================================================
 
+// HExists 检测field是否存在哈希表中
+func (mc *Memory) HExists(ctx context.Context, key, field string) BoolValuer {
+	val := new(redis.BoolCmd)
+	cnt, err := mc.hs.HExists(ctx, key, field)
+	val.SetVal(cnt)
+	val.SetErr(err)
+	return val
+}
+
 // HDel 哈希表删除指定字段(fields)
 func (mc *Memory) HDel(ctx context.Context, key string, fields ...string) IntValuer {
 	val := new(redis.IntCmd)
@@ -228,6 +274,17 @@ func (mc *Memory) HDel(ctx context.Context, key string, fields ...string) IntVal
 func (mc *Memory) HSet(ctx context.Context, key string, data ...interface{}) IntValuer {
 	val := new(redis.IntCmd)
 	cnt, err := mc.hs.HSet(ctx, key, data...)
+	if err == nil {
+		val.SetVal(cnt)
+	}
+	val.SetErr(err)
+	return val
+}
+
+// HSetNX 如果哈希表的field不存在,则设置成功
+func (mc *Memory) HSetNX(ctx context.Context, key, field string, data interface{}) BoolValuer {
+	val := new(redis.BoolCmd)
+	cnt, err := mc.hs.HSetNX(ctx, key, field, data)
 	if err == nil {
 		val.SetVal(cnt)
 	}
@@ -279,6 +336,17 @@ func (mc *Memory) HVals(ctx context.Context, key string) StringSliceValuer {
 	return val
 }
 
+// HGetAll 获取哈希表所有的数据,包括field跟value
+func (mc *Memory) HGetAll(ctx context.Context, key string) MapStringStringValuer {
+	val := new(redis.MapStringStringCmd)
+	v, err := mc.hs.HGetAll(ctx, key)
+	if err == nil {
+		val.SetVal(v)
+	}
+	val.SetErr(err)
+	return val
+}
+
 // HLen 哈希表所有字段的数量
 func (mc *Memory) HLen(ctx context.Context, key string) IntValuer {
 	val := new(redis.IntCmd)
@@ -294,13 +362,13 @@ func (mc *Memory) HLen(ctx context.Context, key string) IntValuer {
 // ======================================== LIST ==================================================
 // ================================================================================================
 
-// Trim 对一个列表进行修剪(trim)，就是说，让列表只保留指定区间内的元素，不在指定区间之内的元素都将被删除。
+// LTrim 对一个列表进行修剪(trim)，就是说，让列表只保留指定区间内的元素，不在指定区间之内的元素都将被删除。
 // 举个例子，执行命令 LTRIM list 0 2 ，表示只保留列表 list 的前三个元素，其余元素全部删除。
 // 下标(index)参数 start 和 stop 都以 0 为底，也就是说，以 0 表示列表的第一个元素，以 1 表示列表的第二个元素，以此类推。
 // 你也可以使用负数下标，以 -1 表示列表的最后一个元素， -2 表示列表的倒数第二个元素，以此类推。
-func (mc *Memory) Trim(ctx context.Context, key string, start, stop int64) StatusValuer {
+func (mc *Memory) LTrim(ctx context.Context, key string, start, stop int64) StatusValuer {
 	val := new(redis.StatusCmd)
-	err := mc.ls.Trim(ctx, key, start, stop)
+	err := mc.ls.LTrim(ctx, key, start, stop)
 	if err == nil {
 		val.SetVal("OK")
 	}
@@ -308,10 +376,10 @@ func (mc *Memory) Trim(ctx context.Context, key string, start, stop int64) Statu
 	return val
 }
 
-// Push 将数据推入到列表中
-func (mc *Memory) Push(ctx context.Context, key string, data ...interface{}) IntValuer {
+// LPush 将数据推入到列表中
+func (mc *Memory) LPush(ctx context.Context, key string, data ...interface{}) IntValuer {
 	val := new(redis.IntCmd)
-	v, err := mc.ls.Push(ctx, key, data...)
+	v, err := mc.ls.LPush(ctx, key, data...)
 	if err == nil {
 		val.SetVal(v)
 	}
@@ -319,10 +387,10 @@ func (mc *Memory) Push(ctx context.Context, key string, data ...interface{}) Int
 	return val
 }
 
-// Rang 提取列表范围内的数据
-func (mc *Memory) Rang(ctx context.Context, key string, start, stop int64) StringSliceValuer {
+// LRang 提取列表范围内的数据
+func (mc *Memory) LRang(ctx context.Context, key string, start, stop int64) StringSliceValuer {
 	val := new(redis.StringSliceCmd)
-	v, err := mc.ls.Rang(ctx, key, start, stop)
+	v, err := mc.ls.LRang(ctx, key, start, stop)
 	if err == nil {
 		val.SetVal(v)
 	}
@@ -331,10 +399,10 @@ func (mc *Memory) Rang(ctx context.Context, key string, start, stop int64) Strin
 
 }
 
-// Pop 推出列表尾的最后数据
-func (mc *Memory) Pop(ctx context.Context, key string) StringValuer {
+// LPop 推出列表尾的最后数据
+func (mc *Memory) LPop(ctx context.Context, key string) StringValuer {
 	val := new(redis.StringCmd)
-	v, err := mc.ls.Pop(ctx, key)
+	v, err := mc.ls.LPop(ctx, key)
 	if err == nil {
 		val.SetVal(v)
 	}
@@ -342,10 +410,21 @@ func (mc *Memory) Pop(ctx context.Context, key string) StringValuer {
 	return val
 }
 
-// Shift 推出列表头的第一个数据
-func (mc *Memory) Shift(ctx context.Context, key string) StringValuer {
+// LShift 推出列表头的第一个数据
+func (mc *Memory) LShift(ctx context.Context, key string) StringValuer {
 	val := new(redis.StringCmd)
-	v, err := mc.ls.Shift(ctx, key)
+	v, err := mc.ls.LShift(ctx, key)
+	if err == nil {
+		val.SetVal(v)
+	}
+	val.SetErr(err)
+	return val
+}
+
+// LLen 获取列表长度
+func (mc *Memory) LLen(ctx context.Context, key string) IntValuer {
+	val := new(redis.IntCmd)
+	v, err := mc.ls.LLen(ctx, key)
 	if err == nil {
 		val.SetVal(v)
 	}

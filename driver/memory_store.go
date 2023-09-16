@@ -2,9 +2,10 @@ package driver
 
 import (
 	"context"
-	"github.com/jerbe/jcache/utils"
 	"sync"
 	"time"
+
+	"github.com/jerbe/jcache/utils"
 )
 
 /*
@@ -91,6 +92,14 @@ func (ev *expireValue) SetExpireAt(t *time.Time) {
 		t = &maxTTL
 	}
 	ev.expireAt = t
+}
+
+type baseStoreer interface {
+	Del(ctx context.Context, keys ...string) (int64, error)
+	Exists(ctx context.Context, keys ...string) (int64, error)
+	Expire(ctx context.Context, key string, ttl time.Duration) (bool, error)
+	ExpireAt(ctx context.Context, key string, at time.Time) (bool, error)
+	Persist(ctx context.Context, key string) (bool, error)
 }
 
 // baseStore 基础存储
@@ -187,7 +196,7 @@ func (s *baseStore) Expire(ctx context.Context, key string, ttl time.Duration) (
 	default:
 		v, ok := s.values[key]
 		if !ok {
-			return false, MemoryNil
+			return false, nil
 		}
 		v.SetExpire(ttl)
 		return true, nil
@@ -205,9 +214,28 @@ func (s *baseStore) ExpireAt(ctx context.Context, key string, at time.Time) (boo
 	default:
 		v, ok := s.values[key]
 		if !ok {
-			return false, MemoryNil
+			return false, nil
 		}
 		v.SetExpireAt(&at)
+		return true, nil
+	}
+}
+
+// Persist 设置某个key成为持久性的
+func (s *baseStore) Persist(ctx context.Context, key string) (bool, error) {
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+		v, ok := s.values[key]
+		if !ok {
+			return false, nil
+		}
+
+		v.SetExpireAt(nil)
 		return true, nil
 	}
 }

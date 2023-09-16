@@ -2,10 +2,11 @@ package driver
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/jerbe/go-errors"
 )
 
 /**
@@ -52,8 +53,8 @@ func newListStore() *listStore {
 	return store
 }
 
-// Push 将数据推入到列表中
-func (s *listStore) Push(ctx context.Context, key string, data ...interface{}) (int64, error) {
+// LPush 将数据推入到列表中
+func (s *listStore) LPush(ctx context.Context, key string, data ...interface{}) (int64, error) {
 	s.rwMutex.Lock()
 	defer s.rwMutex.Unlock()
 
@@ -87,11 +88,11 @@ func (s *listStore) Push(ctx context.Context, key string, data ...interface{}) (
 	}
 }
 
-// Trim 对一个列表进行修剪(trim)，就是说，让列表只保留指定区间内的元素，不在指定区间之内的元素都将被删除。
+// LTrim 对一个列表进行修剪(trim)，就是说，让列表只保留指定区间内的元素，不在指定区间之内的元素都将被删除。
 // 举个例子，执行命令 LTRIM list 0 2 ，表示只保留列表 list 的前三个元素，其余元素全部删除。
 // 下标(index)参数 start 和 stop 都以 0 为底，也就是说，以 0 表示列表的第一个元素，以 1 表示列表的第二个元素，以此类推。
 // 你也可以使用负数下标，以 -1 表示列表的最后一个元素， -2 表示列表的倒数第二个元素，以此类推。
-func (s *listStore) Trim(ctx context.Context, key string, start, stop int64) error {
+func (s *listStore) LTrim(ctx context.Context, key string, start, stop int64) error {
 	s.rwMutex.Lock()
 	defer s.rwMutex.Unlock()
 
@@ -153,8 +154,8 @@ func (s *listStore) Trim(ctx context.Context, key string, start, stop int64) err
 	}
 }
 
-// Rang 提取列表范围内的数据
-func (s *listStore) Rang(ctx context.Context, key string, start, stop int64) ([]string, error) {
+// LRang 提取列表范围内的数据
+func (s *listStore) LRang(ctx context.Context, key string, start, stop int64) ([]string, error) {
 	s.rwMutex.RLock()
 	defer s.rwMutex.RUnlock()
 
@@ -216,8 +217,8 @@ func (s *listStore) Rang(ctx context.Context, key string, start, stop int64) ([]
 	}
 }
 
-// Pop 推出列表尾的最后数据
-func (s *listStore) Pop(ctx context.Context, key string) (string, error) {
+// LPop 推出列表尾的最后数据
+func (s *listStore) LPop(ctx context.Context, key string) (string, error) {
 	s.rwMutex.Lock()
 	defer s.rwMutex.Unlock()
 
@@ -238,13 +239,13 @@ func (s *listStore) Pop(ctx context.Context, key string) (string, error) {
 
 		back := val.value[0]
 
-		val.value = val.value[1:listLen]
+		val.value = val.value[1:]
 		return back, nil
 	}
 }
 
-// Shift 推出列表头的第一个数据
-func (s *listStore) Shift(ctx context.Context, key string) (string, error) {
+// LShift 推出列表头的第一个数据
+func (s *listStore) LShift(ctx context.Context, key string) (string, error) {
 	s.rwMutex.Lock()
 	defer s.rwMutex.Unlock()
 
@@ -264,7 +265,26 @@ func (s *listStore) Shift(ctx context.Context, key string) (string, error) {
 		}
 
 		first := val.value[listLen-1]
-		val.value = val.value[0 : listLen-1]
+		val.value = val.value[:listLen-1]
 		return first, nil
+	}
+}
+
+// LLen 列表长度
+func (s *listStore) LLen(ctx context.Context, key string) (int64, error) {
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	default:
+		val, ok := s.values[key].(*listValue)
+		if !ok {
+			return 0, nil
+		}
+
+		listLen := len(val.value)
+		return int64(listLen), nil
 	}
 }

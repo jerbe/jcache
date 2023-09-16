@@ -103,6 +103,56 @@ func (s *hashStore) HSet(ctx context.Context, key string, data ...interface{}) (
 	}
 }
 
+// HSetNX 如果field不存在则设置成功
+func (s *hashStore) HSetNX(ctx context.Context, key, field string, data interface{}) (bool, error) {
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+
+		val, ok := s.values[key].(*hashValue)
+		if ok {
+			return false, nil
+		}
+
+		val = newHashValue()
+		value, err := marshalData(data)
+		if err != nil {
+			return false, err
+		}
+		val.value[field] = value
+		s.values[key] = val
+
+		return true, nil
+	}
+}
+
+// HExists 判断field是否存在
+func (s *hashStore) HExists(ctx context.Context, key, field string) (bool, error) {
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
+
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+
+		val, ok := s.values[key].(*hashValue)
+		if !ok {
+			return false, nil
+		}
+
+		_, ok = val.value[field]
+		if !ok {
+			return false, nil
+		}
+		return true, nil
+	}
+}
+
 // HDel 哈希表删除指定字段(fields)
 func (s *hashStore) HDel(ctx context.Context, key string, fields ...string) (int64, error) {
 	s.rwMutex.RLock()
@@ -162,11 +212,11 @@ func (s *hashStore) HMGet(ctx context.Context, key string, fields ...string) ([]
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
-		rest := make([]interface{}, 0)
+		rest := make([]interface{}, len(fields), len(fields))
 
 		val, ok := s.values[key].(*hashValue)
 		if !ok {
-			return rest, MemoryNil
+			return rest, nil
 		}
 
 		// 不能使用for rang, 因为它是无序的
@@ -174,9 +224,7 @@ func (s *hashStore) HMGet(ctx context.Context, key string, fields ...string) ([]
 			field := fields[i]
 			str, ok := val.value[field]
 			if ok {
-				rest = append(rest, str)
-			} else {
-				rest = append(rest, nil)
+				rest[i] = str
 			}
 		}
 
@@ -195,7 +243,7 @@ func (s *hashStore) HKeys(ctx context.Context, key string) ([]string, error) {
 	default:
 		val, ok := s.values[key].(*hashValue)
 		if !ok {
-			return []string{}, MemoryNil
+			return []string{}, nil
 		}
 
 		rest := make([]string, len(val.value))
@@ -219,7 +267,7 @@ func (s *hashStore) HVals(ctx context.Context, key string) ([]string, error) {
 	default:
 		val, ok := s.values[key].(*hashValue)
 		if !ok {
-			return []string{}, MemoryNil
+			return []string{}, nil
 		}
 
 		rest := make([]string, len(val.value))
@@ -227,6 +275,28 @@ func (s *hashStore) HVals(ctx context.Context, key string) ([]string, error) {
 		for _, value := range val.value {
 			rest[i] = value
 			i++
+		}
+		return rest, nil
+	}
+}
+
+// HGetAll 获取哈希表所有值
+func (s *hashStore) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
+
+	select {
+	case <-ctx.Done():
+		return map[string]string{}, ctx.Err()
+	default:
+		val, ok := s.values[key].(*hashValue)
+		if !ok {
+			return map[string]string{}, nil
+		}
+
+		rest := make(map[string]string)
+		for k, v := range val.value {
+			rest[k] = v
 		}
 		return rest, nil
 	}
@@ -243,7 +313,7 @@ func (s *hashStore) HLen(ctx context.Context, key string) (int64, error) {
 	default:
 		val, ok := s.values[key].(*hashValue)
 		if !ok {
-			return 0, MemoryNil
+			return 0, nil
 		}
 
 		return int64(len(val.value)), nil

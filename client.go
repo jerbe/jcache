@@ -2,8 +2,9 @@ package jcache
 
 import (
 	"context"
-	"github.com/jerbe/jcache/driver"
 	"time"
+
+	"github.com/jerbe/jcache/driver"
 )
 
 /**
@@ -31,7 +32,7 @@ func (cli *baseClient) Exists(ctx context.Context, keys ...string) (int64, error
 			return val.Result()
 		}
 	}
-	return 0, ErrNoRecord
+	return 0, nil
 }
 
 // Del 删除键
@@ -90,17 +91,29 @@ func (cli *baseClient) ExpireAt(ctx context.Context, key string, at time.Time) e
 
 type Client struct {
 	baseClient
+	StringClient
+	HashClient
+	ListClient
 }
 
 func NewClient(drivers ...driver.Cache) *Client {
 	drvrs := make([]driver.Common, len(drivers))
+
 	for i := 0; i < len(drivers); i++ {
 		drvrs[i] = drivers[i]
 	}
+
+	bcli := baseClient{drivers: drvrs}
+
 	return &Client{
-		baseClient: baseClient{drivers: drvrs},
+		baseClient:   bcli,
+		StringClient: StringClient{baseClient: bcli},
+		HashClient:   HashClient{baseClient: bcli},
+		ListClient:   ListClient{baseClient: bcli},
 	}
 }
+
+/*
 
 // =======================================================
 // ================= STRING ==============================
@@ -415,8 +428,8 @@ func (cli *Client) HDel(ctx context.Context, key string, fields ...string) error
 // ================= LIST ================================
 // =======================================================
 
-// Trim 获取列表内的范围数据
-func (cli *Client) Trim(ctx context.Context, key string, start, stop int64) error {
+// LTrim 获取列表内的范围数据
+func (cli *Client) LTrim(ctx context.Context, key string, start, stop int64) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -425,14 +438,14 @@ func (cli *Client) Trim(ctx context.Context, key string, start, stop int64) erro
 	}
 
 	for _, c := range cli.drivers {
-		c.(driver.Cache).Trim(ctx, key, start, stop).Result()
+		c.(driver.Cache).LTrim(ctx, key, start, stop).Result()
 	}
 
 	return nil
 }
 
-// Push 推送数据
-func (cli *Client) Push(ctx context.Context, key string, data ...interface{}) error {
+// LPush 推送数据
+func (cli *Client) LPush(ctx context.Context, key string, data ...interface{}) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -441,19 +454,19 @@ func (cli *Client) Push(ctx context.Context, key string, data ...interface{}) er
 	}
 
 	for _, c := range cli.drivers {
-		c.(driver.Cache).Push(ctx, key, data...)
+		c.(driver.Cache).LPush(ctx, key, data...)
 	}
 
 	return nil
 }
 
-// Rang 获取列表内的范围数据
-func (cli *Client) Rang(ctx context.Context, key string, start, stop int64) ([]string, error) {
+// LRang 获取列表内的范围数据
+func (cli *Client) LRang(ctx context.Context, key string, start, stop int64) ([]string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val, err := c.(driver.Cache).Rang(ctx, key, start, stop).Result()
+		val, err := c.(driver.Cache).LRang(ctx, key, start, stop).Result()
 		if err == nil {
 			return val, nil
 		}
@@ -461,13 +474,13 @@ func (cli *Client) Rang(ctx context.Context, key string, start, stop int64) ([]s
 	return nil, ErrNoRecord
 }
 
-// RangAndScan 通过扫描方式获取列表内的范围内数据
-func (cli *Client) RangAndScan(ctx context.Context, dst interface{}, key string, start, stop int64) error {
+// LRangAndScan 通过扫描方式获取列表内的范围内数据
+func (cli *Client) LRangAndScan(ctx context.Context, dst interface{}, key string, start, stop int64) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val := c.(driver.Cache).Rang(ctx, key, start, stop)
+		val := c.(driver.Cache).LRang(ctx, key, start, stop)
 		if val.Err() == nil && val.ScanSlice(dst) == nil {
 			return nil
 		}
@@ -476,13 +489,13 @@ func (cli *Client) RangAndScan(ctx context.Context, dst interface{}, key string,
 	return ErrNoRecord
 }
 
-// Pop 取出列表内的第一个数据
-func (cli *Client) Pop(ctx context.Context, key string) (string, error) {
+// LPop 取出列表内的第一个数据
+func (cli *Client) LPop(ctx context.Context, key string) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
-		val, err := c.(driver.Cache).Pop(ctx, key).Result()
+		val, err := c.(driver.Cache).LPop(ctx, key).Result()
 		if err == nil {
 			return val, nil
 		}
@@ -491,14 +504,14 @@ func (cli *Client) Pop(ctx context.Context, key string) (string, error) {
 	return "", ErrNoRecord
 }
 
-// PopAndScan 通过扫描方式取出列表内的第一个数据
-func (cli *Client) PopAndScan(ctx context.Context, dst interface{}, key string) error {
+// LPopAndScan 通过扫描方式取出列表内的第一个数据
+func (cli *Client) LPopAndScan(ctx context.Context, dst interface{}, key string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	for _, c := range cli.drivers {
-		val := c.(driver.Cache).Pop(ctx, key)
+		val := c.(driver.Cache).LPop(ctx, key)
 		if val.Err() == nil && val.Scan(dst) == nil {
 			return nil
 		}
@@ -506,3 +519,21 @@ func (cli *Client) PopAndScan(ctx context.Context, dst interface{}, key string) 
 
 	return ErrNoRecord
 }
+
+// LLen 返回列表长度
+func (cli *Client) LLen(ctx context.Context, key string) (int64, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	for _, c := range cli.drivers {
+		val := c.(driver.Cache).LLen(ctx, key)
+		if val.Err() == nil {
+			return val.Result()
+		}
+	}
+
+	return 0, nil
+}
+
+*/
