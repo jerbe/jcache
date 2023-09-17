@@ -113,7 +113,9 @@ func Test_listStore_LPop(t *testing.T) {
 
 func Test_listStore_LRang(t *testing.T) {
 	s := newListStore()
-	s.LPush(context.Background(), "key", "x", "1", "你好", "3", "g", "5") // [5,g,3,你好,1,x]
+	// [5,g,3,你好,1,x]
+	// [0,1,2,3,  3,4]
+	s.LPush(context.Background(), "key", "x", "1", "你好", "3", "g", "5")
 	type args struct {
 		ctx   context.Context
 		key   string
@@ -127,6 +129,28 @@ func Test_listStore_LRang(t *testing.T) {
 		wantErr bool
 	}{
 		{
+			name: "获取失败,6,7",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 6,
+				stop:  7,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name: "获取失败,-1,7",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: -1,
+				stop:  7,
+			},
+			want:    []string{"x"},
+			wantErr: false,
+		},
+		{
 			name: "获取成功,0_0",
 			args: args{
 				ctx:   context.Background(),
@@ -135,6 +159,50 @@ func Test_listStore_LRang(t *testing.T) {
 				stop:  0,
 			},
 			want:    []string{"5"},
+			wantErr: false,
+		},
+		{
+			name: "获取成功,5_5",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 5,
+				stop:  5,
+			},
+			want:    []string{"x"},
+			wantErr: false,
+		},
+		{
+			name: "获取成功,6_6",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 6,
+				stop:  6,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name: "获取成功,6_-1",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 6,
+				stop:  -1,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name: "获取成功,-1_-1",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: -1,
+				stop:  -1,
+			},
+			want:    []string{"x"},
 			wantErr: false,
 		},
 		{
@@ -168,6 +236,61 @@ func Test_listStore_LRang(t *testing.T) {
 				stop:  0,
 			},
 			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name: "获取失败,-99,-99",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: -99,
+				stop:  -99,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name: "获取失败,99,99",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 99,
+				stop:  99,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name: "成功,-99,99",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: -99,
+				stop:  99,
+			},
+			want:    []string{"5", "g", "3", "你好", "1", "x"},
+			wantErr: false,
+		},
+		{
+			name: "成功,5,6",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 5,
+				stop:  6,
+			},
+			want:    []string{"x"},
+			wantErr: false,
+		},
+		{
+			name: "成功,0,1",
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 0,
+				stop:  1,
+			},
+			want:    []string{"5", "g"},
 			wantErr: false,
 		},
 	}
@@ -252,8 +375,11 @@ func Test_listStore_LShift(t *testing.T) {
 }
 
 func Test_listStore_LTrim(t *testing.T) {
-	s := newListStore()
-
+	var f = func() *listStore {
+		s := newListStore()
+		s.LPush(context.Background(), "key", "x", "1", "你好", "3", "g", "5")
+		return s
+	}
 	type args struct {
 		ctx   context.Context
 		key   string
@@ -262,45 +388,206 @@ func Test_listStore_LTrim(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
+		field   *listStore
 		args    args
+		want    []string
 		wantErr bool
 	}{
 		{
-			name: "裁剪并只保留范围内数据",
+			name:  "获取失败,6,7",
+			field: f(),
 			args: args{
-				ctx: context.Background(),
-				key: func() string {
-					s.LPush(context.Background(), "key", "0", "1", "2", "3", "4", "5") // [5,4,3,2,1,0]
-					return "key"
-				}(),
-				start: 0,
-				stop:  0,
+				ctx:   context.Background(),
+				key:   "key",
+				start: 6,
+				stop:  7,
 			},
+			want:    []string{},
 			wantErr: false,
 		},
 		{
-			name: "裁剪并只保留范围内数据",
+			name:  "获取失败,-1,7",
+			field: f(),
 			args: args{
-				ctx: context.Background(),
-				key: func() string {
-					s.LPush(context.Background(), "key1", "0", "1", "2", "3", "4", "5") // [5,4,3,2,1,0]
-					return "key1"
-				}(),
-				start: 1,
+				ctx:   context.Background(),
+				key:   "key",
+				start: -1,
+				stop:  7,
+			},
+			want:    []string{"x"},
+			wantErr: false,
+		},
+		{
+			name:  "获取成功,0_0",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 0,
+				stop:  0,
+			},
+			want:    []string{"5"},
+			wantErr: false,
+		},
+		{
+			name:  "获取成功,5_5",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 5,
+				stop:  5,
+			},
+			want:    []string{"x"},
+			wantErr: false,
+		},
+		{
+			name:  "获取成功,6_6",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 6,
+				stop:  6,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name:  "获取成功,6_-1",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 6,
 				stop:  -1,
 			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name:  "获取成功,-1_-1",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: -1,
+				stop:  -1,
+			},
+			want:    []string{"x"},
+			wantErr: false,
+		},
+		{
+			name:  "获取成功,1_3",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 1,
+				stop:  3,
+			},
+			want:    []string{"g", "3", "你好"},
+			wantErr: false,
+		},
+		{
+			name:  "获取成功,-2_-1",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: -2,
+				stop:  -1,
+			},
+			want:    []string{"1", "x"},
+			wantErr: false,
+		},
+		{
+			name:  "获取失败,3,0",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 3,
+				stop:  0,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name:  "获取失败,-99,-99",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: -99,
+				stop:  -99,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name:  "获取失败,99,99",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 99,
+				stop:  99,
+			},
+			want:    []string{},
+			wantErr: false,
+		},
+		{
+			name:  "成功,-99,99",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: -99,
+				stop:  99,
+			},
+			want:    []string{"5", "g", "3", "你好", "1", "x"},
+			wantErr: false,
+		},
+		{
+			name:  "成功,5,6",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 5,
+				stop:  6,
+			},
+			want:    []string{"x"},
+			wantErr: false,
+		},
+		{
+			name:  "成功,0,1",
+			field: f(),
+			args: args{
+				ctx:   context.Background(),
+				key:   "key",
+				start: 0,
+				stop:  1,
+			},
+			want:    []string{"5", "g"},
 			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			s := tt.field
 			if err := s.LTrim(tt.args.ctx, tt.args.key, tt.args.start, tt.args.stop); (err != nil) != tt.wantErr {
 				t.Errorf("LTrim() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			r, err := s.LRang(context.Background(), "key", 0, 0)
-			t.Log("rang 1", r, err)
-			r, err = s.LRang(context.Background(), "key1", 0, -1)
-			t.Log("rang 2", r, err)
+			got, err := s.LRang(context.Background(), tt.args.key, 0, -1)
+			if err != nil {
+				t.Errorf("LRang() after LTrim() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("LRang() after LTrim() got = %v, want %v", got, tt.want)
+			}
+
 		})
 	}
 }
@@ -452,4 +739,28 @@ func Test_listStore_LX(t *testing.T) {
 
 	fmt.Println("获取耗时:", time.Now().Sub(now))
 
+}
+
+func Benchmark_listStore_X(b *testing.B) {
+	s := newListStore()
+	b.SetParallelism(100000)
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			key := strconv.FormatInt(rand.Int63n(1000), 10)
+			value := strconv.FormatInt(rand.Int63(), 10)
+			s.LPush(context.Background(), key, value)
+
+			key = strconv.FormatInt(rand.Int63n(1000), 10)
+			s.LShift(context.Background(), key)
+
+			s.LPush(context.Background(), key, value)
+			s.LPush(context.Background(), key, value, value, value, value, value, value, value)
+			s.Expire(context.Background(), key, time.Hour)
+			s.LLen(context.Background(), key)
+			s.LTrim(context.Background(), key, 4, 5)
+			s.LPush(context.Background(), key, value)
+
+		}
+
+	})
 }
