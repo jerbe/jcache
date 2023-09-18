@@ -92,7 +92,7 @@ func (cli *ListClient) LRangAndScan(ctx context.Context, dst interface{}, key st
 	return ErrNoRecord
 }
 
-// LPop 取出列表内的第一个数据
+// LPop 移除并取出列表内的最后一个元素
 func (cli *ListClient) LPop(ctx context.Context, key string) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -107,13 +107,43 @@ func (cli *ListClient) LPop(ctx context.Context, key string) (string, error) {
 	return "", ErrNoRecord
 }
 
-// LPopAndScan 通过扫描方式取出列表内的第一个数据
+// LPopAndScan 通过扫描方式移除并取出列表内的最后一个元素
 func (cli *ListClient) LPopAndScan(ctx context.Context, dst interface{}, key string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for _, c := range cli.drivers {
 		val := c.(driver.List).LPop(ctx, key)
+		if val.Err() == nil && val.Scan(dst) == nil {
+			return nil
+		}
+	}
+
+	return ErrNoRecord
+}
+
+// LShift 移除并取出列表内的第一个元素
+func (cli *ListClient) LShift(ctx context.Context, key string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for _, c := range cli.drivers {
+		val, err := c.(driver.List).LShift(ctx, key).Result()
+		if err == nil {
+			return val, nil
+		}
+	}
+
+	return "", ErrNoRecord
+}
+
+// LShiftAndScan 通过扫描方式移除并取出列表内的第一个元素
+func (cli *ListClient) LShiftAndScan(ctx context.Context, dst interface{}, key string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for _, c := range cli.drivers {
+		val := c.(driver.List).LShift(ctx, key)
 		if val.Err() == nil && val.Scan(dst) == nil {
 			return nil
 		}

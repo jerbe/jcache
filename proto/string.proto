@@ -6,27 +6,24 @@ service String {
 }
 
 enum Action {
+    // Common
     Del = 0;
+    ExpireAt = 1;
+    Persist = 2;
 
+    // String
     Set = 21;
-    SetNX = 22;
-    MSet = 23;
-    Get = 24;
-    MGet = 25;
 
+    // Hash
     HDel = 40;
     HSet = 41;
-    HExists = 42;
-    HGet = 43;
-    HMSet = 44;
-    HMGet = 45;
-    HLen = 56;
-    HSetNX= 57;
-    HKeys = 58;
-    HVals = 49;
-    HGetAll = 50;
 
 
+    // List
+    LPush = 60;
+    LPop = 61;
+    LShift = 62;
+    LTrim = 63;
     }
 
 // DoRequest 执行请求参数

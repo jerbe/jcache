@@ -57,6 +57,26 @@ func (cli *HashClient) HSet(ctx context.Context, key string, values ...interface
 	return nil
 }
 
+// HSetNX 哈希表设置某个字段的值,如果存在的话返回true
+func (cli *HashClient) HSetNX(ctx context.Context, key, field string, value interface{}) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(cli.drivers) == 0 {
+		return false, ErrNoCacheClient
+	}
+
+	b := false
+	for _, c := range cli.drivers {
+		result, _ := c.(driver.Hash).HSetNX(ctx, key, field, value).Result()
+		if result {
+			b = result
+		}
+	}
+
+	return b, nil
+}
+
 // HVals 获取Hash表的所有值
 func (cli *HashClient) HVals(ctx context.Context, key string) ([]string, error) {
 	if ctx == nil {
@@ -86,6 +106,22 @@ func (cli *HashClient) HKeys(ctx context.Context, key string) ([]string, error) 
 	}
 
 	return nil, ErrNoRecord
+}
+
+// HGetAll 获取哈希表中所有的值,包括键/值
+func (cli *HashClient) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	for _, c := range cli.drivers {
+		result, err := c.(driver.Hash).HGetAll(ctx, key).Result()
+		if err == nil {
+			return result, nil
+		}
+	}
+
+	return map[string]string{}, nil
 }
 
 // HKeysAndScan 获取Hash表的所有键并扫描到dst中
@@ -206,4 +242,19 @@ func (cli *HashClient) HDel(ctx context.Context, key string, fields ...string) e
 		c.(driver.Hash).HDel(ctx, key, fields...)
 	}
 	return nil
+}
+
+// HExists 判断哈希表周公某个字段是否存在
+func (cli *HashClient) HExists(ctx context.Context, key, field string) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for _, c := range cli.drivers {
+		// @TODO 失败重做?
+		result, _ := c.(driver.Hash).HExists(ctx, key, field).Result()
+		if result {
+			return true, nil
+		}
+	}
+	return false, nil
 }
