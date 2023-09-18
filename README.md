@@ -6,7 +6,7 @@
 ![](https://img.shields.io/github/forks/jerbe/jcache?color=orange)
 ![](https://img.shields.io/github/license/jerbe/jcache?color=ff69b4)
 ![](https://img.shields.io/badge/language-go-blue)
-[![](https://img.shields.io/badge/doc-go-blue)](https://pkg.go.dev/github.com/jerbe/jcache@v1.1.6)
+[![](https://img.shields.io/badge/doc-go-blue)](https://pkg.go.dev/github.com/jerbe/jcache@v1.1.8)
 ![](https://img.shields.io/github/languages/code-size/jerbe/jcache?color=blueviolet)
 
 ## 项目由来
@@ -40,7 +40,7 @@ client := jcache.NewClient(driver.NewMemory(),driver.NewRedis())
 
 ## 案例
 ```shell
-  go get github.com/jerbe/jcache@v1.1.6
+  go get github.com/jerbe/jcache@v1.1.8
 ```
 
 ```go
