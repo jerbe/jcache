@@ -1,4 +1,4 @@
-module github.com/jerbe/jcache
+module github.com/jerbe/jcache/v2
 
 go 1.14
 
@@ -9,7 +9,9 @@ require (
 )
 
 require (
-	github.com/cespare/xxhash/v2 v2.2.0 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/jerbe/go-errors v1.0.1 // indirect
+	github.com/golang/protobuf v1.5.2
+	github.com/jerbe/go-errors v1.0.1
+	go.etcd.io/etcd/client/v3 v3.5.9
+	google.golang.org/grpc v1.41.0
+	google.golang.org/protobuf v1.26.0
 )

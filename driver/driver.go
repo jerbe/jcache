@@ -109,7 +109,7 @@ type Common interface {
 	Expire(ctx context.Context, key string, ttl time.Duration) BoolValuer
 
 	// ExpireAt 设置某个key在指定时间内到期
-	ExpireAt(ctx context.Context, key string, at *time.Time) BoolValuer
+	ExpireAt(ctx context.Context, key string, at time.Time) BoolValuer
 
 	// Persist 将某个Key设置成持久性
 	Persist(ctx context.Context, key string) BoolValuer

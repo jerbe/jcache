@@ -60,6 +60,8 @@ func marshalData(data interface{}) (string, error) {
 		val = strconv.AppendInt(val, 0, 10)
 	case time.Time:
 		val = d.AppendFormat(val, time.RFC3339Nano)
+	case *time.Time:
+		val = d.AppendFormat(val, time.RFC3339Nano)
 	case time.Duration:
 		val = strconv.AppendInt(val, d.Nanoseconds(), 10)
 	case encoding.BinaryMarshaler:

@@ -3,7 +3,7 @@ package jcache
 import (
 	"context"
 
-	"github.com/jerbe/jcache/driver"
+	"github.com/jerbe/jcache/v2/driver"
 )
 
 /**
@@ -17,13 +17,17 @@ type HashClient struct {
 }
 
 func NewHashClient(drivers ...driver.Hash) *HashClient {
-	drvrs := make([]driver.Common, len(drivers))
+	drs := make([]driver.Common, len(drivers))
 	for i := 0; i < len(drivers); i++ {
-		drvrs[i] = drivers[i]
+		drs[i] = drivers[i]
+	}
+
+	if len(drs) == 0 {
+		drs = append(drs, driver.NewMemory())
 	}
 
 	return &HashClient{
-		baseClient: baseClient{drivers: drvrs},
+		baseClient: baseClient{drivers: drs},
 	}
 }
 

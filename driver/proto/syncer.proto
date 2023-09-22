@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+option go_package=".;proto";
+
+package proto;
+
+service Syncer{
+  rpc Slave(SyncRequest) returns (SyncResponse){}
+  rpc Master(SyncRequest) returns (SyncResponse){}
+}
+
+enum Action {
+    // Common
+    Del = 0;
+    Expire = 1;
+    ExpireAt = 2;
+    Persist = 3;
+
+    // String
+    Set = 21;
+    SetNX = 22;
+
+    // Hash
+    HDel = 40;
+    HSet = 41;
+    HSetNx = 42;
+
+
+    // List
+    LPush = 60;
+    LPop = 61;
+    LShift = 62;
+    LTrim = 63;
+    }
+
+// RunRequest 执行请求参数
+message SyncRequest {
+  Action action = 1;
+  repeated string values = 2;
+}
+
+// RunResponse 执行返回参数
+message SyncResponse {
+  string value = 1;
+}

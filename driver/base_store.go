@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jerbe/jcache/utils"
+	"github.com/jerbe/jcache/v2/utils"
 )
 
 /*
@@ -21,6 +21,16 @@ const (
 
 	// ValueMaxTTL 数值最多可存活时长
 	ValueMaxTTL = time.Hour * 6
+)
+
+type driverStoreType string
+
+const (
+	driverStoreTypeString    driverStoreType = "String"
+	driverStoreTypeHash      driverStoreType = "Hash"
+	driverStoreTypeList      driverStoreType = "List"
+	driverStoreTypeSet       driverStoreType = "Set"
+	driverStoreTypeSortedSet driverStoreType = "SortedSet"
 )
 
 // expireable 可以用于过期的
@@ -96,10 +106,18 @@ func (ev *expireValue) SetExpireAt(t *time.Time) {
 
 type baseStoreer interface {
 	Del(ctx context.Context, keys ...string) (int64, error)
+
 	Exists(ctx context.Context, keys ...string) (int64, error)
+
 	Expire(ctx context.Context, key string, ttl time.Duration) (bool, error)
+
 	ExpireAt(ctx context.Context, key string, at time.Time) (bool, error)
+
 	Persist(ctx context.Context, key string) (bool, error)
+
+	Type() driverStoreType
+
+	KeyExists(key string) bool
 }
 
 // baseStore 基础存储
@@ -139,23 +157,28 @@ func (s *baseStore) checkExpireTick() {
 	}
 }
 
-// keyExists 验证键是否存在
-func (s *baseStore) keyExists(key string) bool {
-	s.rwMutex.Lock()
-	defer s.rwMutex.Unlock()
+// KeyExists 验证键是否存在
+func (s *baseStore) KeyExists(key string) bool {
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
 	_, ok := s.values[key]
 	return ok
+}
+
+// Type 返回存储器类型
+func (s *baseStore) Type() driverStoreType {
+	return ""
 }
 
 // Del 删除指定键数量
 func (s *baseStore) Del(ctx context.Context, keys ...string) (int64, error) {
 	s.rwMutex.Lock()
 	defer s.rwMutex.Unlock()
-	cnt := int64(0)
 	select {
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	default:
+		cnt := int64(0)
 		for _, key := range keys {
 			if _, ok := s.values[key]; ok {
 				delete(s.values, key)

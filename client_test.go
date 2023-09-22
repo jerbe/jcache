@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jerbe/jcache/driver"
+	"github.com/jerbe/jcache/v2/driver"
 )
 
 /**

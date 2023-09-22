@@ -121,8 +121,8 @@ func (r *Redis) Expire(ctx context.Context, key string, ttl time.Duration) BoolV
 }
 
 // ExpireAt 设置某个key在指定时间内到期
-func (r *Redis) ExpireAt(ctx context.Context, key string, at *time.Time) BoolValuer {
-	return r.cli.ExpireAt(ctx, key, *at)
+func (r *Redis) ExpireAt(ctx context.Context, key string, at time.Time) BoolValuer {
+	return r.cli.ExpireAt(ctx, key, at)
 }
 
 // Persist 移除某个key的TTL,设置成持久性

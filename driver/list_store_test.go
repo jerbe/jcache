@@ -22,7 +22,7 @@ func Test_listStore_LPush(t *testing.T) {
 	type args struct {
 		ctx  context.Context
 		key  string
-		data []interface{}
+		data []string
 	}
 	tests := []struct {
 		name    string
@@ -35,7 +35,7 @@ func Test_listStore_LPush(t *testing.T) {
 			args: args{
 				ctx:  context.Background(),
 				key:  "key",
-				data: []interface{}{"v1", "v2", "v3", "v4"},
+				data: []string{"v1", "v2", "v3", "v4"},
 			},
 			want:    4,
 			wantErr: false,
@@ -594,7 +594,7 @@ func Test_listStore_LTrim(t *testing.T) {
 
 func Test_listStore_LLen(t *testing.T) {
 	s := newListStore()
-	s.LPush(context.Background(), "key", "0", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
+	s.LPush(context.Background(), "key", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20")
 
 	type args struct {
 		ctx context.Context

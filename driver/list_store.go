@@ -41,7 +41,6 @@ type listStore struct {
 func newListStore() *listStore {
 	ticker := time.NewTicker(time.Second * 10)
 	store := &listStore{
-
 		baseStore: baseStore{
 			values:       make(map[string]expireable),
 			rwMutex:      sync.RWMutex{},
@@ -53,9 +52,13 @@ func newListStore() *listStore {
 	return store
 }
 
+func (s *listStore) Type() driverStoreType {
+	return driverStoreTypeList
+}
+
 // LPush 将数据推入到列表中
 // 推入后列表顺序,先推入在左,后推入在右 [a,b,c,d,e...]
-func (s *listStore) LPush(ctx context.Context, key string, data ...interface{}) (int64, error) {
+func (s *listStore) LPush(ctx context.Context, key string, data ...string) (int64, error) {
 	s.rwMutex.Lock()
 	defer s.rwMutex.Unlock()
 
@@ -73,17 +76,7 @@ func (s *listStore) LPush(ctx context.Context, key string, data ...interface{}) 
 			return int64(len(val.value)), errors.New("the number of parameters is incorrect")
 		}
 
-		var result = make([]string, 0, dataLen)
-		for i := 0; i < dataLen; i++ {
-			marshal, err := marshalData(data[i])
-			if err != nil {
-				return 0, err
-			}
-			result = append(result, marshal)
-		}
-
-		val.value = append(val.value, result...)
-
+		val.value = append(val.value, data...)
 		s.values[key] = val
 		return int64(len(val.value)), nil
 	}
@@ -139,6 +132,11 @@ func (s *listStore) LTrim(ctx context.Context, key string, start, stop int64) er
 		start = tmp
 
 		result := make([]string, stop-start+1, stop-start+1)
+		if len(result) == 0 {
+			val.value = nil
+			delete(s.values, key)
+			return nil
+		}
 		copy(result, val.value[start-1:stop])
 		val.value = result
 		return nil
@@ -221,9 +219,14 @@ func (s *listStore) LPop(ctx context.Context, key string) (string, error) {
 			return "", MemoryNil
 		}
 
-		back := val.value[0]
-		val.value = val.value[1:listLen:listLen]
-		return back, nil
+		item := val.value[0]
+		if len(val.value) == 1 {
+			val.value = nil
+			delete(s.values, key)
+		} else {
+			val.value = val.value[1:listLen:listLen]
+		}
+		return item, nil
 	}
 }
 
@@ -238,6 +241,7 @@ func (s *listStore) LShift(ctx context.Context, key string) (string, error) {
 	case <-ctx.Done():
 		return "", ctx.Err()
 	default:
+
 		val, ok := s.values[key].(*listValue)
 		if !ok {
 			return "", MemoryNil
@@ -249,9 +253,15 @@ func (s *listStore) LShift(ctx context.Context, key string) (string, error) {
 			return "", MemoryNil
 		}
 
-		first := val.value[listLen-1]
-		val.value = val.value[: listLen-1 : listLen-1]
-		return first, nil
+		item := val.value[listLen-1]
+		if len(val.value) == 1 {
+			val.value = nil
+			delete(s.values, key)
+		} else {
+			val.value = val.value[: listLen-1 : listLen-1]
+		}
+
+		return item, nil
 	}
 }
 

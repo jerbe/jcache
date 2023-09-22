@@ -51,8 +51,12 @@ func newStringStore() *stringStore {
 	return store
 }
 
+func (s *stringStore) Type() driverStoreType {
+	return driverStoreTypeString
+}
+
 // Set 设置数据
-func (ss *stringStore) Set(ctx context.Context, key string, data interface{}, expiration time.Duration) error {
+func (ss *stringStore) Set(ctx context.Context, key, data string, expiration time.Duration) error {
 	ss.rwMutex.Lock()
 	defer ss.rwMutex.Unlock()
 
@@ -65,12 +69,7 @@ func (ss *stringStore) Set(ctx context.Context, key string, data interface{}, ex
 			val = newStringValue()
 		}
 
-		var err error
-		val.value, err = marshalData(data)
-		if err != nil {
-			return err
-		}
-
+		val.value = data
 		if ok && expiration != KeepTTL {
 			val.SetExpire(expiration)
 		}
@@ -82,7 +81,7 @@ func (ss *stringStore) Set(ctx context.Context, key string, data interface{}, ex
 }
 
 // SetNX 设置数据,如果key不存在的话
-func (ss *stringStore) SetNX(ctx context.Context, key string, data interface{}, expiration time.Duration) (bool, error) {
+func (ss *stringStore) SetNX(ctx context.Context, key, data string, expiration time.Duration) (bool, error) {
 	ss.rwMutex.RLock()
 	defer ss.rwMutex.RUnlock()
 
@@ -96,12 +95,7 @@ func (ss *stringStore) SetNX(ctx context.Context, key string, data interface{}, 
 		}
 
 		val = newStringValue()
-		var err error
-		val.value, err = marshalData(data)
-		if err != nil {
-			return false, err
-		}
-
+		val.value = data
 		if ok && expiration != KeepTTL {
 			val.SetExpire(expiration)
 		}

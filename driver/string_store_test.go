@@ -116,7 +116,7 @@ func Test_stringStore_Set(t *testing.T) {
 	type args struct {
 		ctx        context.Context
 		key        string
-		data       interface{}
+		data       string
 		expiration time.Duration
 	}
 	tests := []struct {
@@ -129,7 +129,7 @@ func Test_stringStore_Set(t *testing.T) {
 			args: args{
 				ctx:        context.Background(),
 				key:        "key",
-				data:       nil,
+				data:       "",
 				expiration: 0,
 			},
 		},
@@ -138,7 +138,7 @@ func Test_stringStore_Set(t *testing.T) {
 			args: args{
 				ctx:        context.Background(),
 				key:        "key",
-				data:       nil,
+				data:       "",
 				expiration: 0,
 			},
 		},
@@ -147,7 +147,7 @@ func Test_stringStore_Set(t *testing.T) {
 			args: args{
 				ctx:        context.Background(),
 				key:        "key",
-				data:       nil,
+				data:       "",
 				expiration: -1,
 			},
 		},
@@ -166,7 +166,7 @@ func Test_stringStore_SetNX(t *testing.T) {
 	type args struct {
 		ctx        context.Context
 		key        string
-		data       interface{}
+		data       string
 		expiration time.Duration
 	}
 	tests := []struct {

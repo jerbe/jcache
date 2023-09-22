@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/jerbe/jcache/driver"
+	"github.com/jerbe/jcache/v2/driver"
 )
 
 /**
@@ -18,13 +18,17 @@ type StringClient struct {
 }
 
 func NewStringClient(drivers ...driver.String) *StringClient {
-	drvrs := make([]driver.Common, len(drivers))
+	drs := make([]driver.Common, len(drivers))
 	for i := 0; i < len(drivers); i++ {
-		drvrs[i] = drivers[i]
+		drs[i] = drivers[i]
+	}
+
+	if len(drs) == 0 {
+		drs = append(drs, driver.NewMemory())
 	}
 
 	return &StringClient{
-		baseClient: baseClient{drivers: drvrs},
+		baseClient: baseClient{drivers: drs},
 	}
 }
 

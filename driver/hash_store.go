@@ -50,6 +50,10 @@ func newHashStore() *hashStore {
 	return store
 }
 
+func (s *hashStore) Type() driverStoreType {
+	return driverStoreTypeHash
+}
+
 // HSet 写入hash数据
 // 接受以下格式的值：
 // HSet("myhash", "key1", "value1", "key2", "value2")
@@ -61,7 +65,7 @@ func newHashStore() *hashStore {
 //
 // HSet("myhash", MyHash{"value1", "value2"}) 警告：redis-server >= 4.0
 // 对于struct，可以是结构体指针类型，我们只解析标签为redis的字段。如果你不想读取该字段，可以使用 `redis:"-"` 标志来忽略它，或者不需要设置 redis 标签。对于结构体字段的类型，我们只支持简单的数据类型：string、int/uint(8,16,32,64)、float(32,64)、time.Time(to RFC3339Nano)、time.Duration(to Nanoseconds) ），如果是其他更复杂或者自定义的数据类型，请实现encoding.BinaryMarshaler接口。
-func (s *hashStore) HSet(ctx context.Context, key string, data ...interface{}) (int64, error) {
+func (s *hashStore) HSet(ctx context.Context, key string, data ...string) (int64, error) {
 	s.rwMutex.RLock()
 	defer s.rwMutex.RUnlock()
 
@@ -74,37 +78,28 @@ func (s *hashStore) HSet(ctx context.Context, key string, data ...interface{}) (
 		if !ok {
 			val = newHashValue()
 		}
-		result := sliceArgs(data)
-		if len(result)%2 != 0 {
+		if len(data)%2 != 0 {
 			return 0, errors.New("the number of parameters is incorrect")
 		}
 
 		newCnt := int64(0)
-		for i := 0; i < len(result); i += 2 {
-			field, err := marshalData(result[i])
-			if err != nil {
-				return 0, err
-			}
-
+		for i := 0; i < len(data); i += 2 {
+			field := data[i]
 			if _, ok := val.value[field]; !ok {
 				newCnt++
 			}
 
-			value, err := marshalData(result[i+1])
-			if err != nil {
-				return 0, err
-			}
+			value := data[i+1]
 			val.value[field] = value
 		}
 
 		s.values[key] = val
-
 		return newCnt, nil
 	}
 }
 
 // HSetNX 如果field不存在则设置成功
-func (s *hashStore) HSetNX(ctx context.Context, key, field string, data interface{}) (bool, error) {
+func (s *hashStore) HSetNX(ctx context.Context, key, field string, data string) (bool, error) {
 	s.rwMutex.Lock()
 	defer s.rwMutex.Unlock()
 
@@ -119,11 +114,7 @@ func (s *hashStore) HSetNX(ctx context.Context, key, field string, data interfac
 		}
 
 		val = newHashValue()
-		value, err := marshalData(data)
-		if err != nil {
-			return false, err
-		}
-		val.value[field] = value
+		val.value[field] = data
 		s.values[key] = val
 
 		return true, nil
@@ -162,19 +153,20 @@ func (s *hashStore) HDel(ctx context.Context, key string, fields ...string) (int
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	default:
+		affectsCnt := int64(0)
 		val, ok := s.values[key].(*hashValue)
 		if !ok {
 			return 0, nil
 		}
-
-		affectsCnt := int64(0)
 		for _, field := range fields {
 			if _, ok := val.value[field]; ok {
 				affectsCnt++
 				delete(val.value, field)
 			}
 		}
-
+		if len(val.value) == 0 {
+			delete(s.values, key)
+		}
 		return affectsCnt, nil
 	}
 }

@@ -2,7 +2,8 @@ package jcache
 
 import (
 	"context"
-	"github.com/jerbe/jcache/driver"
+	"github.com/jerbe/jcache/v2/driver"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -27,15 +28,24 @@ func newStringClient() *StringClient {
 			Password:   "root",
 		}
 		redisDriver := driver.NewRedisOptionsWithConfig(rdCfg)
-
 	*/
+	l := make([]driver.Cache, 0)
+	for i := 0; i < 10; i++ {
+		cfg := driver.DistributeMemoryConfig{Port: 9890 + i, Prefix: "/kings", EtcdCfg: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}}}
+		memoryDriver, err := driver.NewDistributeMemory(cfg)
+		if err != nil {
+			panic(err)
+		}
+		l = append(l, memoryDriver)
+	}
 
-	memoryDriver := driver.NewMemoryString()
-	return NewStringClient(memoryDriver)
+	return NewStringClient(l[0])
 }
 
+var stringCli = newStringClient()
+
 func BenchmarkStringClient(b *testing.B) {
-	cli := newStringClient()
+	cli := stringCli
 
 	rand.Seed(time.Now().UnixNano())
 

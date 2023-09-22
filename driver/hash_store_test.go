@@ -16,7 +16,7 @@ import (
 func Test_hashStore_HDel(t *testing.T) {
 	s := newHashStore()
 	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2")
-	s.HSet(context.Background(), "key", 1, 1, 2, 2)
+	s.HSet(context.Background(), "key", "1", "1", "2", "2")
 	type args struct {
 		ctx    context.Context
 		key    string
@@ -77,15 +77,7 @@ func Test_hashStore_HDel(t *testing.T) {
 func Test_hashStore_HGet(t *testing.T) {
 	s := newHashStore()
 
-	type HashData struct {
-		Today string `redis:"today"`
-
-		Yesterday string `redis:"yesterday"`
-	}
-
-	data := HashData{Today: "today", Yesterday: "yesterday"}
-
-	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", data)
+	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", "today", "today", "yesterday", "yesterday")
 	type args struct {
 		ctx   context.Context
 		key   string
@@ -155,15 +147,7 @@ func Test_hashStore_HGet(t *testing.T) {
 func Test_hashStore_HKeys(t *testing.T) {
 	s := newHashStore()
 
-	type HashData struct {
-		Today string `redis:"today"`
-
-		Yesterday string `redis:"yesterday"`
-	}
-
-	data := HashData{Today: "today", Yesterday: "yesterday"}
-
-	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", data)
+	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", "today", "today", "yesterday", "yesterday")
 
 	type args struct {
 		ctx context.Context
@@ -214,15 +198,7 @@ func Test_hashStore_HKeys(t *testing.T) {
 func Test_hashStore_HLen(t *testing.T) {
 	s := newHashStore()
 
-	type HashData struct {
-		Today string `redis:"today"`
-
-		Yesterday string `redis:"yesterday"`
-	}
-
-	data := HashData{Today: "today", Yesterday: "yesterday"}
-
-	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", data)
+	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", "today", "today", "yesterday", "yesterday")
 
 	type args struct {
 		ctx context.Context
@@ -261,15 +237,7 @@ func Test_hashStore_HLen(t *testing.T) {
 func Test_hashStore_HMGet(t *testing.T) {
 	s := newHashStore()
 
-	type HashData struct {
-		Today string `redis:"today"`
-
-		Yesterday string `redis:"yesterday"`
-	}
-
-	data := HashData{Today: "today", Yesterday: "yesterday"}
-
-	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", data)
+	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", "today", "today", "yesterday", "yesterday")
 
 	type args struct {
 		ctx    context.Context
@@ -349,7 +317,7 @@ func Test_hashStore_HSet(t *testing.T) {
 	type args struct {
 		ctx  context.Context
 		key  string
-		data []interface{}
+		data []string
 	}
 	tests := []struct {
 		name    string
@@ -362,7 +330,7 @@ func Test_hashStore_HSet(t *testing.T) {
 			args: args{
 				ctx:  context.Background(),
 				key:  "key",
-				data: []interface{}{"f1", "v1", "f2", "v2"},
+				data: []string{"f1", "v1", "f2", "v2"},
 			},
 			want:    2,
 			wantErr: false,
@@ -372,117 +340,17 @@ func Test_hashStore_HSet(t *testing.T) {
 			args: args{
 				ctx:  context.Background(),
 				key:  "key",
-				data: []interface{}{[]string{"f11", "v11", "f12", "v12"}},
+				data: []string{"f11", "v11", "f12", "v12"},
 			},
 			want:    2,
 			wantErr: false,
 		},
 		{
-			name: "设置成功,接口数组",
+			name: "设置失败,参数数量不对",
 			args: args{
 				ctx:  context.Background(),
 				key:  "key",
-				data: []interface{}{[]interface{}{"f111", "v111", "f112", "v112"}},
-			},
-			want:    2,
-			wantErr: false,
-		},
-		{
-			name: "设置成功,字符串map",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{map[string]string{"f21": "v21", "f22": "v22"}},
-			},
-			want:    2,
-			wantErr: false,
-		},
-		{
-			name: "设置成功,接口map",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{map[string]interface{}{"f31": "v21", "f32": "v22"}},
-			},
-			want:    2,
-			wantErr: false,
-		},
-		{
-			name: "设置成功,struct",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{HashData{Today: "today", Yesterday: "yesterday", Tomorrow: ""}},
-			},
-			want:    2,
-			wantErr: false,
-		},
-		{
-			name: "设置成功,字符串+字符串数组",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{"fa", "va", []string{"fb", "vb"}},
-			},
-			want:    2,
-			wantErr: false,
-		},
-		{
-			name: "设置成功,字符串+字符串map",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{"fc", "vc", map[string]string{"fd": "vd"}},
-			},
-			want:    2,
-			wantErr: false,
-		},
-		{
-			name: "设置成功,字符串+接口map",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{"fe", "ve", map[string]interface{}{"ff": "vf"}},
-			},
-			want:    2,
-			wantErr: false,
-		},
-		{
-			name: "设置成功,字符串+struct",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{"fg", "vg", HashData{Today: "today", Yesterday: "yesterday", Tomorrow: "tomorrow"}},
-			},
-			want:    2,
-			wantErr: false,
-		},
-		{
-			name: "失败,data数量不正确,少传f1的v1",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{"f1", HashData{Today: "today", Yesterday: "yesterday", Tomorrow: "tomorrow"}},
-			},
-			want:    0,
-			wantErr: true,
-		},
-		{
-			name: "失败,data数量不正确,少传字符串切片f1的v1",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{[]string{"f1"}, HashData{Today: "today", Yesterday: "yesterday", Tomorrow: "tomorrow"}},
-			},
-			want:    0,
-			wantErr: true,
-		},
-		{
-			name: "失败,data数量不正确,少传接口切片f1的v1",
-			args: args{
-				ctx:  context.Background(),
-				key:  "key",
-				data: []interface{}{[]interface{}{"f1"}, HashData{Today: "today", Yesterday: "yesterday", Tomorrow: "tomorrow"}},
+				data: []string{"f11", "v11", "f12"},
 			},
 			want:    0,
 			wantErr: true,
@@ -504,15 +372,8 @@ func Test_hashStore_HSet(t *testing.T) {
 
 func Test_hashStore_HVals(t *testing.T) {
 	s := newHashStore()
-	type HashData struct {
-		Today string `redis:"today"`
 
-		Yesterday string `redis:"yesterday"`
-
-		Tomorrow string `memory:"tomorrow,omitempty"`
-	}
-
-	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", []string{"f3", "v3", "f4", "v4"}, map[string]string{"f5": "v5", "f6": "v6"}, HashData{Today: "今天", Yesterday: "昨天", Tomorrow: ""})
+	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", "f3", "v3", "f4", "v4", "f5", "v5", "f6", "v6", "today", "今天", "yesterday", "昨天")
 
 	type args struct {
 		ctx context.Context
@@ -569,7 +430,7 @@ func Test_hashStore_HGetAll(t *testing.T) {
 		Tomorrow string `memory:"tomorrow,omitempty"`
 	}
 
-	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", []string{"f3", "v3", "f4", "v4"}, map[string]string{"f5": "v5", "f6": "v6"}, HashData{Today: "今天", Yesterday: "昨天", Tomorrow: ""})
+	s.HSet(context.Background(), "key", "f1", "v1", "f2", "v2", "f3", "v3", "f4", "v4", "f5", "v5", "f6", "v6", "today", "今天", "yesterday", "昨天")
 
 	type args struct {
 		ctx context.Context
@@ -629,7 +490,7 @@ func Test_hashStore_HSetNX(t *testing.T) {
 		ctx   context.Context
 		key   string
 		field string
-		data  interface{}
+		data  string
 	}
 	tests := []struct {
 		name    string
