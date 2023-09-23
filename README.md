@@ -11,9 +11,12 @@
 
 ## 说明
 
-* 此项目是模拟Redis开发的一个轻量的多级缓存集成方案，内置内存缓存驱动。操作简单，命令模拟redis，开箱即可使用。
-* 内存驱动操作便捷，读写都非常快速。对于单机服务来说非常有用。
-* 内存驱动又支持分布式，基于`ETCD`的服务发现跟选举策略，会选出其中一台实例当做主节点，其余的为从节点。主节点的每次操作都会使用`gRPC`接口同步到其他从节点上；从节点的写操作会使用`gRPC`请求到主节点上再同步到其他从节点上。以增强数据的一致性。
+* 该项目为golang库，golang项目引用该库即可使用。`go get github.com/jerbe/jcache/v2`。
+* 此项目是模拟Redis开发的一个轻量的多级缓存集成方案。
+* 可同时运行多种驱动，互不干扰。
+* 支持Redis驱动，或自定义驱动，只要实现 `driver.Cache` 即可。
+* 内置内存缓存驱动。
+* 内存驱动支持分布式，基于`ETCD`的服务发现跟选举策略，会选出其中一台实例当做主节点，其余的为从节点。主节点的每次操作都会使用`gRPC`接口同步到其他从节点上；从节点的写操作会使用`gRPC`请求到主节点上再同步到其他从节点上。以尽量达到高可用和数据的一致性。
 
 
 ## 基本架构
@@ -56,6 +59,19 @@ func main(){
 	// 实例化一个以内存作为驱动的缓存客户端
     client := jcache.NewClient()
 
+	// 实例化一个分布式的内存驱动缓存客户端
+    cfg := driver.DistributeMemoryConfig{
+		Port: 10080,         // 用于启动grpc服务端口,同机器请设置不同端口
+        Prefix: "/prefix",   //根据自己的业务设置对应前缀
+		// EtcdCfg 根据自己部署的ETCD服务设置对应配置
+        EtcdCfg: clientv3.Config{
+			Endpoints: []string{"127.0.0.1:2379"}
+		}
+    }
+	client := driver.NewDistributeMemory(cfg)
+	
+	
+	
     // 支持所有操作的客户端,包括 String,Hash,List 
 	client := jcache.NewClient(driver.NewMemory())
 	client.Set(context.Background(),"hello","world", time.Hour)
