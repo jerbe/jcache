@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"log"
 	"math/rand"
 	"net"
@@ -20,6 +18,10 @@ import (
 	v3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 /**
@@ -40,6 +42,7 @@ type syncerServer struct {
 	syncer *memorySyncer
 }
 
+// sync 进行节点间的数据同步
 func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.SyncResponse, error) {
 	if err := utils.ContextIsDone(ctx); err != nil {
 		return nil, err
@@ -197,43 +200,179 @@ func (s *syncerServer) Master(ctx context.Context, in *proto.SyncRequest) (*prot
 	return rsp, err
 }
 
+// grpcAuthUnaryInterceptor 认证凭证
+func grpcAuthUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	server, ok := info.Server.(*syncerServer)
+	if !ok {
+		return handler(ctx, req)
+	}
+
+	if server.syncer.username == "" && server.syncer.password == "" {
+		return handler(ctx, req)
+	}
+
+	m, ok := metadata.FromIncomingContext(ctx)
+	if server.syncer.username != "" {
+		if val, ok := m["username"]; !ok || (len(val) == 0 || (val[0] != server.syncer.username)) {
+			return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+		}
+	}
+
+	if server.syncer.password != "" {
+		if val, ok := m["password"]; !ok || (len(val) == 0 || (val[0] != server.syncer.password)) {
+			return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+		}
+	}
+
+	return handler(ctx, req)
+}
+
+type syncerEndpointCredential struct {
+	username, password string
+}
+
+func (c *syncerEndpointCredential) GetRequestMetadata(ctx context.Context, url ...string) (map[string]string, error) {
+	return map[string]string{
+		"username": c.username,
+		"password": c.password,
+	}, nil
+}
+
+// RequireTransportSecurity 自定义认证是否开启TLS
+func (c *syncerEndpointCredential) RequireTransportSecurity() bool {
+	return false
+}
+
 // syncerEndpoint 同步器终端
 type syncerEndpoint struct {
-	key string
-	proto.SyncerClient
+	options  *syncerEndpointOptions
+	cli      proto.SyncerClient
 	conn     *grpc.ClientConn
 	isMaster bool
 }
 
+// ID 获取终端的ID
+func (e *syncerEndpoint) ID() string {
+	if e.options == nil {
+		return ""
+	}
+	return e.options.ID
+}
+
+// Username 获取终端的鉴权用户名
+func (e *syncerEndpoint) Username() string {
+	if e.options == nil {
+		return ""
+	}
+	return e.options.Username
+}
+
+// Password 获取终端的鉴权密码
+func (e *syncerEndpoint) Password() string {
+	if e.options == nil {
+		return ""
+	}
+	return e.options.Password
+}
+
+// Close 关闭终端
 func (e *syncerEndpoint) Close() error {
 	return e.conn.Close()
 }
 
-// memorySyncer 内存驱动分布式同步器
-type memorySyncer struct {
-	grpcSvr proto.SyncerServer
+type syncerEndpointOptions struct {
+	// ID 终端ID
+	ID string
 
-	etcdCli *v3.Client
+	// Target 连接目标
+	Target string
 
-	etcdServerPrefix   string
-	etcdElectionPrefix string
-	etcdServerKey      string
+	// Username 鉴权用户名
+	Username string
 
-	isMaster bool
-
-	servername string
-	port       int
-
-	endpoints      map[string]*syncerEndpoint
-	masterEndpoint *syncerEndpoint
-
-	memory *Memory
-
-	sync.RWMutex
-
-	closed bool
+	// Password 鉴权密码
+	Password string
 }
 
+// newSyncerEndpoint 返回新终端
+func newSyncerEndpoint(opt syncerEndpointOptions) (*syncerEndpoint, error) {
+	retry := 3
+GRPC_CLI:
+	grpcOpts := make([]grpc.DialOption, 0)
+	grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if opt.Username != "" || opt.Password != "" {
+		grpcOpts = append(grpcOpts, grpc.WithPerRPCCredentials(&syncerEndpointCredential{username: opt.Username, password: opt.Password}))
+	}
+	conn, err := grpc.Dial(opt.Target, grpcOpts...)
+	if err != nil {
+		if retry <= 0 {
+			return nil, errors.New("grpc dial max retry")
+		}
+		retry--
+		<-time.NewTimer(time.Second).C
+		goto GRPC_CLI
+	}
+
+	endpoint := &syncerEndpoint{
+		options:  &opt,
+		cli:      proto.NewSyncerClient(conn),
+		conn:     conn,
+		isMaster: false,
+	}
+
+	return endpoint, nil
+}
+
+// memorySyncer 内存驱动分布式同步器
+type memorySyncer struct {
+	// port 服务监听端口
+	port int
+
+	// username 鉴权用户名
+	username string
+
+	// password 鉴权密码
+	password string
+
+	// serverID 当前服务ID ["主机名/随机字符串"], 如 "mypc/a8bc8def8a98z232"
+	serverID string
+
+	// grpcSvr grpc服务实例
+	grpcSvr proto.SyncerServer
+
+	// etcdCli 连接etcd的客户端
+	etcdCli *v3.Client
+
+	// etcdServerPrefix etcd服务发现用的前缀, [jcache/[自定义前缀]/server] 如 /jcache/mycache/server
+	etcdServerPrefix string
+
+	// etcdElectionPrefix etcd选举用的前缀
+	etcdElectionPrefix string
+
+	// etcdServerID 用于etcd服务发现的服务器ID,
+	// 为 [etcdServerPrefix]/[serverID] 如 "/jcache/mycache/server/mypc/a8bc8def8a98z232"
+	etcdServerID string
+
+	// isMaster 指示当前节点是否是主节点
+	isMaster bool
+
+	// slaveEndpoints 从节点终端, 以各节点的 etcdServerID 为键
+	slaveEndpoints map[string]*syncerEndpoint
+
+	// masterEndpoint 主节点终端，该终端节点不会出现在 slaveEndpoints 中
+	masterEndpoint *syncerEndpoint
+
+	// memory 内存驱动器
+	memory *Memory
+
+	// rwMutex 读写锁
+	rwMutex sync.RWMutex
+
+	// isClosed 指示该节点已经被关闭
+	isClosed bool
+}
+
+// newMemorySyncer 初始化一个内存同步器
 func newMemorySyncer(cfg *DistributeMemoryConfig) (*memorySyncer, error) {
 	prefix := strings.TrimPrefix(cfg.Prefix, "/")
 	port := cfg.Port
@@ -244,6 +383,13 @@ func newMemorySyncer(cfg *DistributeMemoryConfig) (*memorySyncer, error) {
 
 	if port <= 0 {
 		return nil, errors.New("listen port zero")
+	}
+
+	username := cfg.Username
+	password := cfg.Password
+
+	if username != "" && password == "" {
+		return nil, errors.New("password not set")
 	}
 
 	//grpc.
@@ -257,7 +403,7 @@ func newMemorySyncer(cfg *DistributeMemoryConfig) (*memorySyncer, error) {
 	if err != nil {
 		return nil, err
 	}
-	grpcSvr := grpc.NewServer()
+	grpcSvr := grpc.NewServer(grpc.ChainUnaryInterceptor(grpcAuthUnaryInterceptor))
 	svr := &syncerServer{}
 	proto.RegisterSyncerServer(grpcSvr, svr)
 
@@ -271,8 +417,8 @@ func newMemorySyncer(cfg *DistributeMemoryConfig) (*memorySyncer, error) {
 				close(ch)
 			}
 		}()
-		time.Sleep(time.Millisecond * 500)
 		go func() {
+			<-time.NewTimer(time.Millisecond * 500).C
 			ch <- nil
 		}()
 		return <-ch
@@ -283,20 +429,22 @@ func newMemorySyncer(cfg *DistributeMemoryConfig) (*memorySyncer, error) {
 		return nil, err
 	}
 
-	servername := utils.Hostname()
+	rand.Seed(time.Now().UnixNano())
+	serverID := fmt.Sprintf("%s/%s", utils.Hostname(), strconv.FormatInt(rand.Int63(), 16))
 	serverPrefix := fmt.Sprintf("%s/%s/server", etcdPrefix, prefix)
 	electionPrefix := fmt.Sprintf("%s/%s/election", etcdPrefix, prefix)
 
-	rand.Seed(time.Now().UnixNano())
 	syncer := &memorySyncer{
+		port:               port,
+		username:           username,
+		password:           password,
+		serverID:           serverID,
 		grpcSvr:            svr,
 		etcdCli:            etcdCli,
-		servername:         servername,
-		port:               port,
 		etcdServerPrefix:   serverPrefix,
 		etcdElectionPrefix: electionPrefix,
-		etcdServerKey:      fmt.Sprintf("%s/%s/%d", serverPrefix, servername, rand.Int63()),
-		endpoints:          make(map[string]*syncerEndpoint),
+		etcdServerID:       fmt.Sprintf("%s/%s", serverPrefix, serverID),
+		slaveEndpoints:     make(map[string]*syncerEndpoint),
 	}
 
 	svr.syncer = syncer
@@ -349,7 +497,9 @@ func newMemorySyncer(cfg *DistributeMemoryConfig) (*memorySyncer, error) {
 // tryElection 尝试进行选举,当异常退出选举时有用
 func (s *memorySyncer) tryElection(ctx context.Context) {
 	var err error
+	err = s.election(ctx)
 	for err != nil {
+		log.Println("*memorySyncer.tryElection")
 		if utils.ContextIsDone(ctx) != nil {
 			return
 		}
@@ -378,7 +528,7 @@ func (s *memorySyncer) election(ctx context.Context) error {
 			}
 			session.Close()
 			if r && ctx.Err() == nil {
-				log.Printf("election was exit, but not closed, register again.  Local:[%s]", s.etcdServerKey)
+				log.Printf("election was exit, but not closed, register again.  Local:[%s]", s.etcdServerID)
 				go s.tryElection(ctx)
 			}
 		}()
@@ -388,29 +538,30 @@ func (s *memorySyncer) election(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-session.Done():
+				r = !s.isClosed
 				return
 			case rsp, ok := <-observerCh:
 				if ok {
 					v := string(rsp.Kvs[0].Value)
-					s.Lock()
+					s.rwMutex.Lock()
 
 					// 如果新主终端在目标终端列表中,则需要在列表中删除
 					// 并且需要设置主终端
-					if e, ok := s.endpoints[v]; ok {
-						delete(s.endpoints, v)
+					if e, ok := s.slaveEndpoints[v]; ok {
+						delete(s.slaveEndpoints, v)
 
 						// 如果该key不是本地节点的key,则设置成主节点
-						if s.etcdServerKey != v {
+						if s.etcdServerID != v {
 							s.masterEndpoint = e
 						}
 					}
 
-					if v == s.etcdServerKey {
+					if v == s.etcdServerID {
 						s.isMaster = true
 					}
-					s.Unlock()
+					s.rwMutex.Unlock()
 				} else {
-					r = !s.closed
+					r = !s.isClosed
 					return
 				}
 			}
@@ -419,7 +570,7 @@ func (s *memorySyncer) election(ctx context.Context) error {
 
 	errCh := make(chan error)
 	go func() {
-		e := election.Campaign(ctx, s.etcdServerKey)
+		e := election.Campaign(ctx, s.etcdServerID)
 		defer func() {
 			close(errCh)
 		}()
@@ -430,7 +581,7 @@ func (s *memorySyncer) election(ctx context.Context) error {
 		}
 
 		s.isMaster = true
-		log.Printf("[Leader] 成为主节点. local:[%s]", s.etcdServerKey)
+		log.Printf("[Leader] 成为主节点. local:[%s]", s.etcdServerID)
 	}()
 
 	time.Sleep(time.Second)
@@ -445,7 +596,9 @@ func (s *memorySyncer) election(ctx context.Context) error {
 // tryRegister 尝试注册服务,当异常退出时有用
 func (s *memorySyncer) tryRegister(ctx context.Context) {
 	var err error
+	err = s.register(ctx)
 	for err != nil {
+		log.Println("*memorySyncer.tryRegister")
 		if utils.ContextIsDone(ctx) != nil {
 			return
 		}
@@ -466,7 +619,7 @@ func (s *memorySyncer) register(ctx context.Context) error {
 	}
 
 	kv := v3.NewKV(s.etcdCli)
-	_, err = kv.Put(ctx, s.etcdServerKey, fmt.Sprintf("%s:%d", utils.Hostname(), s.port), v3.WithLease(lease.ID))
+	_, err = kv.Put(ctx, s.etcdServerID, fmt.Sprintf("%s:%d", utils.GetLocalIPv4(), s.port), v3.WithLease(lease.ID))
 	if err != nil {
 		return err
 	}
@@ -484,7 +637,7 @@ func (s *memorySyncer) register(ctx context.Context) error {
 				log.Printf("election is panic. reason:[%v]", o)
 			}
 			if r && ctx.Err() == nil {
-				log.Printf("keepalive chan was close, but not closed, register again.  Local:[%s]", s.etcdServerKey)
+				log.Printf("keepalive chan was close, but not closed, register again.  Local:[%s]", s.etcdServerID)
 				go s.tryRegister(ctx)
 			}
 		}()
@@ -494,7 +647,7 @@ func (s *memorySyncer) register(ctx context.Context) error {
 				return
 			case _, ok := <-alive:
 				if !ok {
-					r = !s.closed
+					r = !s.isClosed
 					return
 				}
 			}
@@ -513,21 +666,27 @@ func (s *memorySyncer) watchingEndpoints(ctx context.Context) (err error) {
 	}
 
 	if response.Count > 0 {
-		s.Lock()
+		s.rwMutex.Lock()
 		for _, kv := range response.Kvs {
 			k := string(kv.Key)
 			v := string(kv.Value)
 
-			if k == s.etcdServerKey {
+			if k == s.etcdServerID {
 				continue
 			}
 
-			endpoint, err := newSyncerEndpoint(k, v)
+			opt := syncerEndpointOptions{
+				ID:       k,
+				Target:   v,
+				Username: s.username,
+				Password: s.password,
+			}
+			endpoint, err := newSyncerEndpoint(opt)
 			if err == nil {
-				s.endpoints[k] = endpoint
+				s.slaveEndpoints[k] = endpoint
 			}
 		}
-		s.Unlock()
+		s.rwMutex.Unlock()
 	}
 
 	watchCh := s.etcdCli.Watch(ctx, s.etcdServerPrefix, v3.WithPrefix())
@@ -541,27 +700,32 @@ func (s *memorySyncer) watchingEndpoints(ctx context.Context) (err error) {
 					log.Println("syncer watchingEndpoints chan was closed")
 					return
 				}
-				s.Lock()
+				s.rwMutex.Lock()
 				for _, event := range w.Events {
 					k := string(event.Kv.Key)
 					v := string(event.Kv.Value)
-					log.Printf("[Event] local:[%s], type:[%v], key:[%s], value:[%s]", s.etcdServerKey, event.Type, k, v)
+					log.Printf("[Event] local:[%s], type:[%v], key:[%s], value:[%s]", s.etcdServerID, event.Type, k, v)
 					if event.Type == v3.EventTypePut {
 						// 如果Key是本机,则跳过
-						if k == s.etcdServerKey {
+						if k == s.etcdServerID {
 							continue
 						}
-
-						endpoint, err := newSyncerEndpoint(k, v)
+						opt := syncerEndpointOptions{
+							ID:       k,
+							Target:   v,
+							Username: s.username,
+							Password: s.password,
+						}
+						endpoint, err := newSyncerEndpoint(opt)
 						if err != nil {
 							log.Printf("new endpoint error. target:[%s]. reason:[%v]", v, err)
 							continue
 						}
-						s.endpoints[k] = endpoint
+						s.slaveEndpoints[k] = endpoint
 					}
 
 					if event.Type == v3.EventTypeDelete {
-						if endpoint, ok := s.endpoints[k]; ok {
+						if endpoint, ok := s.slaveEndpoints[k]; ok {
 							func() {
 								defer func() {
 									if obj := recover(); obj != nil {
@@ -571,15 +735,21 @@ func (s *memorySyncer) watchingEndpoints(ctx context.Context) (err error) {
 								endpoint.conn.Close()
 							}()
 						}
-						delete(s.endpoints, k)
+
+						delete(s.slaveEndpoints, k)
 
 						// 移除先前主节点,等待选主完成
-						if s.masterEndpoint != nil && s.masterEndpoint.key == k {
+						if s.masterEndpoint != nil && s.masterEndpoint.ID() == k {
 							s.masterEndpoint = nil
+						}
+
+						// 节点断开以后,肯定不能成为主节点
+						if k == s.etcdServerID {
+							s.isMaster = false
 						}
 					}
 				}
-				s.Unlock()
+				s.rwMutex.Unlock()
 			}
 		}
 	}()
@@ -589,23 +759,23 @@ func (s *memorySyncer) watchingEndpoints(ctx context.Context) (err error) {
 
 // syncToSlaves 同步数据到从节点
 func (s *memorySyncer) syncToSlaves(action proto.Action, values ...string) {
-	s.RLock()
-	defer s.RUnlock()
-	for _, endpoint := range s.endpoints {
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
+	req := &proto.SyncRequest{Action: action, Values: values}
+	for _, endpoint := range s.slaveEndpoints {
 		if !endpoint.isMaster {
-			req := &proto.SyncRequest{Action: action, Values: values}
-			endpoint.SyncerClient.Slave(context.TODO(), req)
+			endpoint.cli.Slave(context.TODO(), req)
 		}
 	}
 }
 
 // syncToMaster 同步数据到主节点
 func (s *memorySyncer) syncToMaster(action proto.Action, values ...string) (string, error) {
-	s.RLock()
-	defer s.RUnlock()
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
 	if !s.isMaster && s.masterEndpoint != nil {
 		req := &proto.SyncRequest{Action: action, Values: values}
-		rsp, err := s.masterEndpoint.SyncerClient.Master(context.TODO(), req)
+		rsp, err := s.masterEndpoint.cli.Master(context.TODO(), req)
 		if err != nil {
 			statu := status.Convert(err)
 			switch statu.Code() {
@@ -627,7 +797,7 @@ func (s *memorySyncer) setMemory(memory *Memory) {
 }
 
 func (s *memorySyncer) Close() error {
-	s.closed = true
+	s.isClosed = true
 
 	if s.etcdCli != nil {
 		s.etcdCli.Close()
@@ -637,24 +807,8 @@ func (s *memorySyncer) Close() error {
 		s.masterEndpoint.Close()
 	}
 
-	for _, endpoint := range s.endpoints {
+	for _, endpoint := range s.slaveEndpoints {
 		endpoint.Close()
 	}
 	return nil
-}
-
-// newSyncerEndpoint 返回新终端
-func newSyncerEndpoint(key, target string) (*syncerEndpoint, error) {
-	retry := 3
-GRPC_CLI:
-	conn, err := grpc.Dial(target, grpc.WithInsecure())
-	if err != nil {
-		if retry <= 0 {
-			return nil, errors.New("grpc dial max retry")
-		}
-		retry++
-		time.Sleep(time.Second)
-		goto GRPC_CLI
-	}
-	return &syncerEndpoint{SyncerClient: proto.NewSyncerClient(conn), conn: conn, key: key}, nil
 }

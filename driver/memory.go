@@ -70,6 +70,12 @@ type DistributeMemoryConfig struct {
 	// Port 如果打算启用多个驱动,请分别设置多个不冲突的IP用于启动服务
 	Port int
 
+	// Username 用户名
+	Username string
+
+	// Password 密码
+	Password string
+
 	// EtcdCfg 用于启用ETCD的服务
 	EtcdCfg v3.Config
 

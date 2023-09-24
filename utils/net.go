@@ -11,7 +11,7 @@ import (
   @describe :
 */
 
-// GetMasterIP 获取主IP地址
+// GetMasterIP 获取连接互联网的主IP地址
 func GetMasterIP() string {
 	conn, err := net.DialTimeout("udp", "8.8.8.8:8", time.Second*5)
 	if err != nil {

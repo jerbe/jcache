@@ -20,10 +20,10 @@ func TestNewDistributeMemory(t *testing.T) {
 	count := int64(2)
 	mems := make([]Cache, 0)
 	for i := 0; i < int(count); i++ {
-		cfg := DistributeMemoryConfig{Port: 2000 + i, Prefix: "mydear", EtcdCfg: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}}}
+		cfg := DistributeMemoryConfig{Port: 2000 + i, Prefix: "mydear", Username: "root", Password: "root", EtcdCfg: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}}}
 		mem, err := NewDistributeMemory(cfg)
 		if err != nil {
-			log.Println(err)
+			log.Fatal(err)
 		}
 		mems = append(mems, mem)
 	}

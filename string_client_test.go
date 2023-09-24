@@ -29,8 +29,9 @@ func newStringClient() *StringClient {
 		}
 		redisDriver := driver.NewRedisOptionsWithConfig(rdCfg)
 	*/
+	var cnt = 2
 	l := make([]driver.Cache, 0)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < cnt; i++ {
 		cfg := driver.DistributeMemoryConfig{Port: 9890 + i, Prefix: "/kings", EtcdCfg: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}}}
 		memoryDriver, err := driver.NewDistributeMemory(cfg)
 		if err != nil {
@@ -59,24 +60,24 @@ func BenchmarkStringClient(b *testing.B) {
 			if err != nil {
 				b.Logf("Set:发生错误:%+v", err)
 			}
-			_, err = cli.Get(context.Background(), key)
-			if err != nil {
-				b.Logf("Get:发生错误:%+v", err)
-			}
-
-			err = cli.Expire(context.Background(), key, time.Minute)
-			if err != nil {
-				b.Logf("Expire:发生错误:%+v", err)
-			}
-
-			err = cli.ExpireAt(context.Background(), key, time.Now().Add(time.Minute))
-			if err != nil {
-				b.Logf("ExpireAt:发生错误:%+v", err)
-			}
-			err = cli.Del(context.Background(), key)
-			if err != nil {
-				b.Logf("Del:发生错误:%+v", err)
-			}
+			//_, err = cli.Get(context.Background(), key)
+			//if err != nil {
+			//	b.Logf("Get:发生错误:%+v", err)
+			//}
+			//
+			//err = cli.Expire(context.Background(), key, time.Minute)
+			//if err != nil {
+			//	b.Logf("Expire:发生错误:%+v", err)
+			//}
+			//
+			//err = cli.ExpireAt(context.Background(), key, time.Now().Add(time.Minute))
+			//if err != nil {
+			//	b.Logf("ExpireAt:发生错误:%+v", err)
+			//}
+			//err = cli.Del(context.Background(), key)
+			//if err != nil {
+			//	b.Logf("Del:发生错误:%+v", err)
+			//}
 
 			//b.Log(v)
 		}
