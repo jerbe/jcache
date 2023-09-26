@@ -64,7 +64,7 @@ func NewMemory() Cache {
 }
 
 type DistributeMemoryConfig struct {
-	// Prefix 服务前缀,如果数据不想通,不同驱动实例需要设置不同的前缀
+	// Prefix 业务名前缀,如果用于隔离不同业务
 	Prefix string
 
 	// Port 如果打算启用多个驱动,请分别设置多个不冲突的IP用于启动服务
@@ -104,21 +104,19 @@ func NewStringMemory() String {
 // ================================================================================================
 
 // checkKeyExists 检测Key是否已经存在,并放回存储该key的容器
-func (m *Memory) checkKeyExists(key string) (bool, baseStoreer) {
+func (m *Memory) checkKeyExists(key string) (baseStoreer, bool) {
 	for _, store := range m.storeList {
 		if store.KeyExists(key) {
-			return true, store
+			return store, true
 		}
 	}
-	return false, nil
+	return nil, false
 }
 
 // checkKeyAble 检测Key是否可以使用
 func (m *Memory) checkKeyAble(key string, storeType driverStoreType) (bool, error) {
-	if b, s := m.checkKeyExists(key); b {
-		if s.Type() != storeType {
-			return false, fmt.Errorf("the key is already of type '%s' and cannot be set to type'%s'", s.Type(), storeType)
-		}
+	if s, b := m.checkKeyExists(key); b && s.Type() != storeType {
+		return false, fmt.Errorf("the key is already of type '%s' and cannot be set to type'%s'", s.Type(), storeType)
 	}
 	return true, nil
 }
@@ -466,7 +464,7 @@ func (m *Memory) SetNX(ctx context.Context, key string, data interface{}, expira
 }
 
 func (m *Memory) setNX(ctx context.Context, key, data string, expiration time.Duration) (bool, error) {
-	if b, _ := m.checkKeyExists(key); b {
+	if _, b := m.checkKeyExists(key); b {
 		return false, nil
 	}
 	return m.ss.SetNX(ctx, key, data, expiration)
@@ -482,10 +480,8 @@ func (m *Memory) Get(ctx context.Context, key string) StringValuer {
 	}
 
 	v, err := m.ss.Get(ctx, key)
-	if err == nil {
-		val.SetVal(v)
-	}
-	val.SetErr(err)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
 	return val
 }
 
@@ -493,9 +489,7 @@ func (m *Memory) Get(ctx context.Context, key string) StringValuer {
 func (m *Memory) MGet(ctx context.Context, keys ...string) SliceValuer {
 	val := new(redis.SliceCmd)
 	anies, err := m.ss.MGet(ctx, keys...)
-	if err == nil {
-		val.SetVal(anies)
-	}
+	val.SetVal(anies)
 	val.SetErr(err)
 	return val
 }
@@ -642,9 +636,7 @@ func (m *Memory) HSetNX(ctx context.Context, key, field string, data interface{}
 	// 设置到本地并同步到从节点
 	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
 		cnt, err := m.hSetNX(ctx, key, field, value)
-		if err == nil {
-			val.SetVal(cnt)
-		}
+		val.SetVal(cnt)
 		val.SetErr(err)
 		if m.syncer != nil && err == nil {
 			m.syncToSlave(proto.Action_HSet, key, field, value)
@@ -673,10 +665,9 @@ func (m *Memory) hSetNX(ctx context.Context, key, field, value string) (bool, er
 func (m *Memory) HGet(ctx context.Context, key string, field string) StringValuer {
 	val := new(redis.StringCmd)
 	v, err := m.hs.HGet(ctx, key, field)
-	if err == nil {
-		val.SetVal(v)
-	}
-	val.SetErr(err)
+
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
 	return val
 }
 
@@ -684,9 +675,7 @@ func (m *Memory) HGet(ctx context.Context, key string, field string) StringValue
 func (m *Memory) HMGet(ctx context.Context, key string, fields ...string) SliceValuer {
 	val := new(redis.SliceCmd)
 	v, err := m.hs.HMGet(ctx, key, fields...)
-	if err == nil {
-		val.SetVal(v)
-	}
+	val.SetVal(v)
 	val.SetErr(err)
 	return val
 }
@@ -695,9 +684,7 @@ func (m *Memory) HMGet(ctx context.Context, key string, fields ...string) SliceV
 func (m *Memory) HKeys(ctx context.Context, key string) StringSliceValuer {
 	val := new(redis.StringSliceCmd)
 	v, err := m.hs.HKeys(ctx, key)
-	if err == nil {
-		val.SetVal(v)
-	}
+	val.SetVal(v)
 	val.SetErr(err)
 	return val
 }
@@ -706,9 +693,7 @@ func (m *Memory) HKeys(ctx context.Context, key string) StringSliceValuer {
 func (m *Memory) HVals(ctx context.Context, key string) StringSliceValuer {
 	val := new(redis.StringSliceCmd)
 	v, err := m.hs.HVals(ctx, key)
-	if err == nil {
-		val.SetVal(v)
-	}
+	val.SetVal(v)
 	val.SetErr(err)
 	return val
 }
@@ -717,9 +702,7 @@ func (m *Memory) HVals(ctx context.Context, key string) StringSliceValuer {
 func (m *Memory) HGetAll(ctx context.Context, key string) MapStringStringValuer {
 	val := new(redis.MapStringStringCmd)
 	v, err := m.hs.HGetAll(ctx, key)
-	if err == nil {
-		val.SetVal(v)
-	}
+	val.SetVal(v)
 	val.SetErr(err)
 	return val
 }
@@ -728,9 +711,7 @@ func (m *Memory) HGetAll(ctx context.Context, key string) MapStringStringValuer 
 func (m *Memory) HLen(ctx context.Context, key string) IntValuer {
 	val := new(redis.IntCmd)
 	v, err := m.hs.HLen(ctx, key)
-	if err == nil {
-		val.SetVal(v)
-	}
+	val.SetVal(v)
 	val.SetErr(err)
 	return val
 }
@@ -841,10 +822,8 @@ func (m *Memory) lPush(ctx context.Context, key string, values ...string) (int64
 func (m *Memory) LRang(ctx context.Context, key string, start, stop int64) StringSliceValuer {
 	val := new(redis.StringSliceCmd)
 	v, err := m.ls.LRang(ctx, key, start, stop)
-	if err == nil {
-		val.SetVal(v)
-	}
-	val.SetErr(err)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
 	return val
 
 }
@@ -864,7 +843,7 @@ func (m *Memory) LPop(ctx context.Context, key string) StringValuer {
 	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
 		v, err := m.lPop(ctx, key)
 		val.SetVal(v)
-		val.SetErr(err)
+		val.SetErr(translateErr(err))
 
 		if m.syncer != nil && err == nil {
 			m.syncToSlave(proto.Action_LPop, key)
@@ -874,10 +853,8 @@ func (m *Memory) LPop(ctx context.Context, key string) StringValuer {
 
 	// 访问主节点并返回数据
 	rsp, err := m.syncToMaster(proto.Action_LPop, key)
+	val.SetVal(rsp)
 	val.SetErr(err)
-	if err == nil {
-		val.SetVal(rsp)
-	}
 	return val
 }
 
@@ -905,7 +882,7 @@ func (m *Memory) LShift(ctx context.Context, key string) StringValuer {
 	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
 		v, err := m.lShift(ctx, key)
 		val.SetVal(v)
-		val.SetErr(err)
+		val.SetErr(translateErr(err))
 
 		if m.syncer != nil && err == nil {
 			m.syncToSlave(proto.Action_LShift, key)
@@ -915,10 +892,8 @@ func (m *Memory) LShift(ctx context.Context, key string) StringValuer {
 
 	// 访问主节点并返回数据
 	rsp, err := m.syncToMaster(proto.Action_LShift, key)
+	val.SetVal(rsp)
 	val.SetErr(err)
-	if err == nil {
-		val.SetVal(rsp)
-	}
 	return val
 }
 
@@ -935,9 +910,7 @@ func (m *Memory) lShift(ctx context.Context, key string) (string, error) {
 func (m *Memory) LLen(ctx context.Context, key string) IntValuer {
 	val := new(redis.IntCmd)
 	v, err := m.ls.LLen(ctx, key)
-	if err == nil {
-		val.SetVal(v)
-	}
+	val.SetVal(v)
 	val.SetErr(err)
 	return val
 }

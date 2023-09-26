@@ -13,7 +13,7 @@ import (
 */
 
 type ListClient struct {
-	baseClient
+	BaseClient
 }
 
 func NewListClient(drivers ...driver.List) *ListClient {
@@ -27,7 +27,7 @@ func NewListClient(drivers ...driver.List) *ListClient {
 	}
 
 	return &ListClient{
-		baseClient{drivers: drs},
+		BaseClient{drivers: drs},
 	}
 }
 
@@ -36,138 +36,95 @@ func NewListClient(drivers ...driver.List) *ListClient {
 // =======================================================
 
 // LTrim 获取列表内的范围数据
-func (cli *ListClient) LTrim(ctx context.Context, key string, start, stop int64) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
+func (cli *ListClient) LTrim(ctx context.Context, key string, start, stop int64) driver.StatusValuer {
+	ctx, _ = cli.preCheck(ctx)
+
+	var value driver.StatusValuer
+	for i, c := range cli.drivers {
+		if v := c.(driver.List).LTrim(ctx, key, start, stop); i == 0 {
+			value = v
+		}
 	}
 
-	for _, c := range cli.drivers {
-		c.(driver.List).LTrim(ctx, key, start, stop).Result()
-	}
-
-	return nil
+	return value
 }
 
 // LPush 推送数据
-func (cli *ListClient) LPush(ctx context.Context, key string, data ...interface{}) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
+func (cli *ListClient) LPush(ctx context.Context, key string, data ...interface{}) driver.IntValuer {
+	ctx, _ = cli.preCheck(ctx)
 
-	for _, c := range cli.drivers {
-		c.(driver.List).LPush(ctx, key, data...)
+	var value driver.IntValuer
+	for i, c := range cli.drivers {
+		if v := c.(driver.List).LPush(ctx, key, data...); i == 0 {
+			value = v
+		}
 	}
-
-	return nil
+	return value
 }
 
 // LRang 获取列表内的范围数据
-func (cli *ListClient) LRang(ctx context.Context, key string, start, stop int64) ([]string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+func (cli *ListClient) LRang(ctx context.Context, key string, start, stop int64) driver.StringSliceValuer {
+	ctx, _ = cli.preCheck(ctx)
+
+	var value driver.StringSliceValuer
 	for _, c := range cli.drivers {
-		val, err := c.(driver.List).LRang(ctx, key, start, stop).Result()
-		if err == nil {
-			return val, nil
+		if value = c.(driver.List).LRang(ctx, key, start, stop); returnable(value) {
+			return value
 		}
 	}
-	return nil, ErrNoRecord
+	return value
 }
 
 // LRangAndScan 通过扫描方式获取列表内的范围内数据
 func (cli *ListClient) LRangAndScan(ctx context.Context, dst interface{}, key string, start, stop int64) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		val := c.(driver.List).LRang(ctx, key, start, stop)
-		if val.Err() == nil && val.ScanSlice(dst) == nil {
-			return nil
-		}
-	}
-
-	return ErrNoRecord
+	return cli.LRang(ctx, key, start, stop).ScanSlice(dst)
 }
 
 // LPop 移除并取出列表内的最后一个元素
-func (cli *ListClient) LPop(ctx context.Context, key string) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+func (cli *ListClient) LPop(ctx context.Context, key string) driver.StringValuer {
+	ctx, _ = cli.preCheck(ctx)
+
+	var value driver.StringValuer
 	for _, c := range cli.drivers {
-		val, err := c.(driver.List).LPop(ctx, key).Result()
-		if err == nil {
-			return val, nil
+		if value = c.(driver.List).LPop(ctx, key); returnable(value) {
+			return value
 		}
 	}
-
-	return "", ErrNoRecord
+	return value
 }
 
 // LPopAndScan 通过扫描方式移除并取出列表内的最后一个元素
 func (cli *ListClient) LPopAndScan(ctx context.Context, dst interface{}, key string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		val := c.(driver.List).LPop(ctx, key)
-		if val.Err() == nil && val.Scan(dst) == nil {
-			return nil
-		}
-	}
-
-	return ErrNoRecord
+	return cli.LPop(ctx, key).Scan(dst)
 }
 
 // LShift 移除并取出列表内的第一个元素
-func (cli *ListClient) LShift(ctx context.Context, key string) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+func (cli *ListClient) LShift(ctx context.Context, key string) driver.StringValuer {
+	ctx, _ = cli.preCheck(ctx)
+
+	var value driver.StringValuer
 	for _, c := range cli.drivers {
-		val, err := c.(driver.List).LShift(ctx, key).Result()
-		if err == nil {
-			return val, nil
+		if value = c.(driver.List).LShift(ctx, key); returnable(value) {
+			return value
 		}
 	}
 
-	return "", ErrNoRecord
+	return value
 }
 
 // LShiftAndScan 通过扫描方式移除并取出列表内的第一个元素
 func (cli *ListClient) LShiftAndScan(ctx context.Context, dst interface{}, key string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		val := c.(driver.List).LShift(ctx, key)
-		if val.Err() == nil && val.Scan(dst) == nil {
-			return nil
-		}
-	}
-
-	return ErrNoRecord
+	return cli.LShift(ctx, key).Scan(dst)
 }
 
 // LLen 返回列表长度
-func (cli *ListClient) LLen(ctx context.Context, key string) (int64, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+func (cli *ListClient) LLen(ctx context.Context, key string) driver.IntValuer {
+	ctx, _ = cli.preCheck(ctx)
+	var value driver.IntValuer
 	for _, c := range cli.drivers {
-		val := c.(driver.List).LLen(ctx, key)
-		if val.Err() == nil {
-			return val.Result()
+		if value = c.(driver.List).LLen(ctx, key); returnable(value) {
+			return value
 		}
 	}
-
-	return 0, nil
+	return value
 }

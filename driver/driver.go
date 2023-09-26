@@ -3,6 +3,11 @@ package driver
 import (
 	"context"
 	"time"
+
+	"github.com/jerbe/jcache/v2/errors"
+
+	cerr "github.com/jerbe/go-errors"
+	"github.com/redis/go-redis/v9"
 )
 
 /**
@@ -186,4 +191,19 @@ type BoolValuer interface {
 	Err() error
 
 	Result() (bool, error)
+}
+
+// FloatValuer 浮点型数值接口
+type FloatValuer interface {
+	Val() float64
+	Err() error
+
+	Result() (float64, error)
+}
+
+func translateErr(err error) error {
+	if cerr.IsIn(err, redis.Nil, MemoryNil) {
+		return errors.Nil
+	}
+	return err
 }

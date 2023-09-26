@@ -107,27 +107,37 @@ func NewRedisListDriver(opt *RedisOptions) Hash {
 
 // Del 删除一个或多个key
 func (r *Redis) Del(ctx context.Context, keys ...string) IntValuer {
-	return r.cli.Del(ctx, keys...)
+	cmd := r.cli.Del(ctx, keys...)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // Exists 判断某个Key是否存在
 func (r *Redis) Exists(ctx context.Context, keys ...string) IntValuer {
-	return r.cli.Exists(ctx, keys...)
+	cmd := r.cli.Exists(ctx, keys...)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // Expire 设置某个key的存活时间
 func (r *Redis) Expire(ctx context.Context, key string, ttl time.Duration) BoolValuer {
-	return r.cli.Expire(ctx, key, ttl)
+	cmd := r.cli.Expire(ctx, key, ttl)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // ExpireAt 设置某个key在指定时间内到期
 func (r *Redis) ExpireAt(ctx context.Context, key string, at time.Time) BoolValuer {
-	return r.cli.ExpireAt(ctx, key, at)
+	cmd := r.cli.ExpireAt(ctx, key, at)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // Persist 移除某个key的TTL,设置成持久性
 func (r *Redis) Persist(ctx context.Context, key string) BoolValuer {
-	return r.cli.Persist(ctx, key)
+	cmd := r.cli.Persist(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // ============================
@@ -136,22 +146,30 @@ func (r *Redis) Persist(ctx context.Context, key string) BoolValuer {
 
 // Set 设置数据
 func (r *Redis) Set(ctx context.Context, key string, data interface{}, ttl time.Duration) StatusValuer {
-	return r.cli.Set(ctx, key, data, ttl)
+	cmd := r.cli.Set(ctx, key, data, ttl)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // SetNX 如果key不存在才设置数据
 func (r *Redis) SetNX(ctx context.Context, key string, data interface{}, ttl time.Duration) BoolValuer {
-	return r.cli.SetNX(ctx, key, data, ttl)
+	cmd := r.cli.SetNX(ctx, key, data, ttl)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // Get 获取数据
 func (r *Redis) Get(ctx context.Context, key string) StringValuer {
-	return r.cli.Get(ctx, key)
+	cmd := r.cli.Get(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // MGet 获取多个key的数据
 func (r *Redis) MGet(ctx context.Context, keys ...string) SliceValuer {
-	return r.cli.MGet(ctx, keys...)
+	cmd := r.cli.MGet(ctx, keys...)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // ============================
@@ -160,52 +178,72 @@ func (r *Redis) MGet(ctx context.Context, keys ...string) SliceValuer {
 
 // HExists 判断哈希表的field是否存在
 func (r *Redis) HExists(ctx context.Context, key, field string) BoolValuer {
-	return r.cli.HExists(ctx, key, field)
+	cmd := r.cli.HExists(ctx, key, field)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HDel 哈希表删除指定字段(fields)
 func (r *Redis) HDel(ctx context.Context, key string, fields ...string) IntValuer {
-	return r.cli.HDel(ctx, key, fields...)
+	cmd := r.cli.HDel(ctx, key, fields...)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HSet 哈希表设置数据
 func (r *Redis) HSet(ctx context.Context, key string, data ...interface{}) IntValuer {
-	return r.cli.HSet(ctx, key, data...)
+	cmd := r.cli.HSet(ctx, key, data...)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HSetNX 设置哈希表field对应的值,当field不存在时才能成功
 func (r *Redis) HSetNX(ctx context.Context, key, field string, data interface{}) BoolValuer {
-	return r.cli.HSetNX(ctx, key, field, data)
+	cmd := r.cli.HSetNX(ctx, key, field, data)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HGet 哈希表获取一个数据
 func (r *Redis) HGet(ctx context.Context, key string, field string) StringValuer {
-	return r.cli.HGet(ctx, key, field)
+	cmd := r.cli.HGet(ctx, key, field)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HMGet 哈希表获取多个数据
 func (r *Redis) HMGet(ctx context.Context, key string, fields ...string) SliceValuer {
-	return r.cli.HMGet(ctx, key, fields...)
+	cmd := r.cli.HMGet(ctx, key, fields...)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HKeys 哈希表获取某个Key的所有字段(field)
 func (r *Redis) HKeys(ctx context.Context, key string) StringSliceValuer {
-	return r.cli.HKeys(ctx, key)
+	cmd := r.cli.HKeys(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HVals 哈希表获取所有值
 func (r *Redis) HVals(ctx context.Context, key string) StringSliceValuer {
-	return r.cli.HVals(ctx, key)
+	cmd := r.cli.HVals(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HGetAll 哈希表获取所有值,包括field跟value
 func (r *Redis) HGetAll(ctx context.Context, key string) MapStringStringValuer {
-	return r.cli.HGetAll(ctx, key)
+	cmd := r.cli.HGetAll(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // HLen 哈希表所有字段的数量
 func (r *Redis) HLen(ctx context.Context, key string) IntValuer {
-	return r.cli.HLen(ctx, key)
+	cmd := r.cli.HLen(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // ============================
@@ -217,30 +255,42 @@ func (r *Redis) HLen(ctx context.Context, key string) IntValuer {
 // 下标(index)参数 start 和 stop 都以 0 为底，也就是说，以 0 表示列表的第一个元素，以 1 表示列表的第二个元素，以此类推。
 // 你也可以使用负数下标，以 -1 表示列表的最后一个元素， -2 表示列表的倒数第二个元素，以此类推。
 func (r *Redis) LTrim(ctx context.Context, key string, start, stop int64) StatusValuer {
-	return r.cli.LTrim(ctx, key, start, stop)
+	cmd := r.cli.LTrim(ctx, key, start, stop)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // LPush 将数据推入到列表中
 func (r *Redis) LPush(ctx context.Context, key string, data ...interface{}) IntValuer {
-	return r.cli.LPush(ctx, key, data)
+	cmd := r.cli.LPush(ctx, key, data)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // LRang 提取列表范围内的数据
 func (r *Redis) LRang(ctx context.Context, key string, start, stop int64) StringSliceValuer {
-	return r.cli.LRange(ctx, key, start, stop)
+	cmd := r.cli.LRange(ctx, key, start, stop)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // LPop 推出列表尾的最后数据
 func (r *Redis) LPop(ctx context.Context, key string) StringValuer {
-	return r.cli.RPop(ctx, key)
+	cmd := r.cli.RPop(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // LShift 推出列表头的第一个数据
 func (r *Redis) LShift(ctx context.Context, key string) StringValuer {
-	return r.cli.LPop(ctx, key)
+	cmd := r.cli.LPop(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }
 
 // LLen 获取列表的长度
 func (r *Redis) LLen(ctx context.Context, key string) IntValuer {
-	return r.cli.LLen(ctx, key)
+	cmd := r.cli.LLen(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
 }

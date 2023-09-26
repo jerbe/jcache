@@ -14,7 +14,7 @@ import (
 */
 
 type StringClient struct {
-	baseClient
+	BaseClient
 }
 
 func NewStringClient(drivers ...driver.String) *StringClient {
@@ -28,7 +28,7 @@ func NewStringClient(drivers ...driver.String) *StringClient {
 	}
 
 	return &StringClient{
-		baseClient: baseClient{drivers: drs},
+		BaseClient: BaseClient{drivers: drs},
 	}
 }
 
@@ -37,125 +37,62 @@ func NewStringClient(drivers ...driver.String) *StringClient {
 // =======================================================
 
 // Set 设置数据
-func (cli *StringClient) Set(ctx context.Context, key string, data interface{}, expiration time.Duration) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
+func (cli *StringClient) Set(ctx context.Context, key string, data interface{}, expiration time.Duration) driver.StatusValuer {
+	ctx, _ = cli.preCheck(ctx)
 
-	for _, c := range cli.drivers {
-		c.(driver.String).Set(ctx, key, data, expiration)
+	var value driver.StatusValuer
+	for i, c := range cli.drivers {
+		if v := c.(driver.String).Set(ctx, key, data, expiration); i == 0 {
+			value = v
+		}
 	}
-	return nil
+	return value
 }
 
 // SetNX 设置数据,如果key不存在的话
-func (cli *StringClient) SetNX(ctx context.Context, key string, data interface{}, expiration time.Duration) error {
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
+func (cli *StringClient) SetNX(ctx context.Context, key string, data interface{}, expiration time.Duration) driver.BoolValuer {
+	ctx, _ = cli.preCheck(ctx)
 
-	if ctx == nil {
-		ctx = context.Background()
+	var value driver.BoolValuer
+	for i, c := range cli.drivers {
+		if v := c.(driver.String).SetNX(ctx, key, data, expiration); i == 0 {
+			value = v
+		}
 	}
-
-	for _, c := range cli.drivers {
-		c.(driver.String).SetNX(ctx, key, data, expiration)
-	}
-	return nil
+	return value
 }
 
 // Get 获取数据
-func (cli *StringClient) Get(ctx context.Context, key string) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+func (cli *StringClient) Get(ctx context.Context, key string) driver.StringValuer {
+	ctx, _ = cli.preCheck(ctx)
+	var value driver.StringValuer
 	for _, c := range cli.drivers {
-		val, err := c.(driver.String).Get(ctx, key).Result()
-		if err == nil {
-			return val, err
+		if value = c.(driver.String).Get(ctx, key); returnable(value) {
+			return value
 		}
 	}
-	return "", ErrNoRecord
+	return value
 }
 
 // MGet 获取多个Keys的值
-func (cli *StringClient) MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+func (cli *StringClient) MGet(ctx context.Context, keys ...string) driver.SliceValuer {
+	ctx, _ = cli.preCheck(ctx)
+
+	var value driver.SliceValuer
 	for _, c := range cli.drivers {
-		val, err := c.(driver.String).MGet(ctx, keys...).Result()
-		if err == nil {
-			return val, err
+		if value = c.(driver.String).MGet(ctx, keys...); returnable(value) {
+			return value
 		}
 	}
-	return nil, ErrNoRecord
+	return value
 }
 
 // GetAndScan 获取并扫描
 func (cli *StringClient) GetAndScan(ctx context.Context, dst interface{}, key string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		err := c.(driver.String).Get(ctx, key).Scan(dst)
-		if err == nil {
-			return nil
-		}
-	}
-
-	return ErrNoRecord
+	return cli.Get(ctx, key).Scan(dst)
 }
 
 // MGetAndScan 获取多个Keys的值并扫描进dst中
 func (cli *StringClient) MGetAndScan(ctx context.Context, dst interface{}, keys ...string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		err := c.(driver.String).MGet(ctx, keys...).Scan(dst)
-		if err == nil {
-			return nil
-		}
-	}
-	return ErrNoRecord
-}
-
-// CheckAndGet 检测并获取数据
-func (cli *StringClient) CheckAndGet(ctx context.Context, key string) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		val, err := c.(driver.String).Get(ctx, key).Result()
-		if err == nil && val == "" {
-			return "", ErrEmpty
-		}
-		if err == nil {
-			return val, nil
-		}
-	}
-	return "", ErrNoRecord
-}
-
-// CheckAndScan 获取数据
-func (cli *StringClient) CheckAndScan(ctx context.Context, dst interface{}, key string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for _, c := range cli.drivers {
-		val := c.(driver.String).Get(ctx, key)
-		if val.Err() == nil && val.Val() == "" {
-			return ErrEmpty
-		}
-
-		if err := val.Scan(dst); err == nil {
-			return nil
-		}
-	}
-
-	return ErrNoRecord
+	return cli.MGet(ctx, keys...).Scan(dst)
 }

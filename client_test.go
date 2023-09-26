@@ -45,7 +45,7 @@ func Test_Client_Del(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := cli.Del(tt.args.ctx, tt.args.keys...); (err != nil) != tt.wantErr {
+			if err := cli.Del(tt.args.ctx, tt.args.keys...).Err(); (err != nil) != tt.wantErr {
 				t.Errorf("Del() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -93,7 +93,7 @@ func Test_Client_Exists(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := cli.Exists(tt.args.ctx, tt.args.keys...)
+			got, err := cli.Exists(tt.args.ctx, tt.args.keys...).Result()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Exists() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -130,7 +130,7 @@ func Test_Client_Expire(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := cli.Expire(tt.args.ctx, tt.args.key, tt.args.expiration); (err != nil) != tt.wantErr {
+			if err := cli.Expire(tt.args.ctx, tt.args.key, tt.args.expiration).Err(); (err != nil) != tt.wantErr {
 				t.Errorf("Expire() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -156,7 +156,7 @@ func Test_Client_ExpireAt(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cli := &baseClient{
+			cli := &BaseClient{
 				drivers: tt.fields.drivers,
 			}
 			if err := cli.ExpireAt(tt.args.ctx, tt.args.key, tt.args.at); (err != nil) != tt.wantErr {

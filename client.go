@@ -5,6 +5,10 @@ import (
 	"time"
 
 	"github.com/jerbe/jcache/v2/driver"
+	"github.com/jerbe/jcache/v2/errors"
+
+	jerrors "github.com/jerbe/go-errors"
+	"github.com/redis/go-redis/v9"
 )
 
 /**
@@ -13,76 +17,96 @@ import (
   @describe :
 */
 
+var (
+	Nil              = errors.Nil
+	ErrNoCacheClient = errors.ErrNoCacheClient
+)
+
+// Z 表示已排序的集合成员。
+type Z struct {
+	Score  float64
+	Member interface{}
+}
+
+// returnable 检测值是否可以返回
+func returnable(val errors.ErrorValuer) bool {
+	return val.Err() == nil || !jerrors.IsIn(val.Err(), redis.Nil, driver.MemoryNil)
+}
+
+func (cli *BaseClient) preCheck(ctx context.Context) (context.Context, context.CancelFunc) {
+	if len(cli.drivers) == 0 {
+		panic(ErrNoCacheClient)
+	}
+
+	var cancelFunc context.CancelFunc
+	if ctx == nil {
+		ctx, cancelFunc = context.WithTimeout(context.Background(), time.Second*5)
+	} else {
+		ctx, cancelFunc = context.WithCancel(context.Background())
+	}
+
+	return ctx, cancelFunc
+}
+
 // =======================================================
 // ================= BaseClient ==========================
 // =======================================================
 
-type baseClient struct {
+type BaseClient struct {
 	drivers []driver.Common
 }
 
 // Exists 判断某个Key是否存在
-func (cli *baseClient) Exists(ctx context.Context, keys ...string) (int64, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+func (cli *BaseClient) Exists(ctx context.Context, keys ...string) driver.IntValuer {
+	ctx, _ = cli.preCheck(ctx)
+
+	var value driver.IntValuer
 	for _, c := range cli.drivers {
-		val := c.Exists(ctx, keys...)
-		if val.Err() == nil {
-			return val.Result()
+		if value = c.Exists(ctx, keys...); returnable(value) {
+			return value
 		}
 	}
-	return 0, nil
+	return value
 }
 
 // Del 删除键
-func (cli *baseClient) Del(ctx context.Context, keys ...string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
+func (cli *BaseClient) Del(ctx context.Context, keys ...string) driver.IntValuer {
+	ctx, _ = cli.preCheck(ctx)
 
-	for _, c := range cli.drivers {
-		c.Del(ctx, keys...)
+	var value driver.IntValuer
+	for i, c := range cli.drivers {
+		if v := c.Del(ctx, keys...); i == 0 {
+			value = v
+		}
 	}
-
-	return nil
+	return value
 }
 
 // Expire 设置某个Key的TTL时长
-func (cli *baseClient) Expire(ctx context.Context, key string, expiration time.Duration) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
-	}
-
-	for _, c := range cli.drivers {
-		c.Expire(ctx, key, expiration)
+func (cli *BaseClient) Expire(ctx context.Context, key string, expiration time.Duration) driver.BoolValuer {
+	ctx, _ = cli.preCheck(ctx)
+	var value driver.BoolValuer
+	for i, c := range cli.drivers {
+		if v := c.Expire(ctx, key, expiration); i == 0 {
+			value = v
+		}
 	}
 
-	// @TODO 其他缓存方法
-	return nil
+	return value
 }
 
 // ExpireAt 设置某个key在指定时间内到期
-func (cli *baseClient) ExpireAt(ctx context.Context, key string, at time.Time) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(cli.drivers) == 0 {
-		return ErrNoCacheClient
+func (cli *BaseClient) ExpireAt(ctx context.Context, key string, at time.Time) driver.BoolValuer {
+	ctx, _ = cli.preCheck(ctx)
+
+	var value driver.BoolValuer
+	for i, c := range cli.drivers {
+		if v := c.ExpireAt(ctx, key, at); i == 0 {
+			value = v
+		}
 	}
 
-	for _, c := range cli.drivers {
-		c.ExpireAt(ctx, key, at)
-	}
-
-	// @TODO 其他缓存方法
-	return nil
+	return value
 }
 
 // =======================================================
@@ -90,12 +114,13 @@ func (cli *baseClient) ExpireAt(ctx context.Context, key string, at time.Time) e
 // =======================================================
 
 type Client struct {
-	baseClient
+	BaseClient
 	StringClient
 	HashClient
 	ListClient
 }
 
+// NewClient 实例化出一个客户端
 func NewClient(drivers ...driver.Cache) *Client {
 	drs := make([]driver.Common, len(drivers))
 
@@ -107,12 +132,12 @@ func NewClient(drivers ...driver.Cache) *Client {
 		drs = append(drs, driver.NewMemory())
 	}
 
-	cli := baseClient{drivers: drs}
+	cli := BaseClient{drivers: drs}
 
 	return &Client{
-		baseClient:   cli,
-		StringClient: StringClient{baseClient: cli},
-		HashClient:   HashClient{baseClient: cli},
-		ListClient:   ListClient{baseClient: cli},
+		BaseClient:   cli,
+		StringClient: StringClient{BaseClient: cli},
+		HashClient:   HashClient{BaseClient: cli},
+		ListClient:   ListClient{BaseClient: cli},
 	}
 }
