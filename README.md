@@ -1,4 +1,4 @@
-# JCache 高可用的多级缓存集成方案库
+# JCache - High-Availability Multi-Level Cache Integration Library in Golang [[中文版]](./README_zh.md)
 
 
 ![](https://img.shields.io/github/issues/jerbe/jcache?color=green)
@@ -9,40 +9,42 @@
 [![](https://img.shields.io/badge/doc-go-blue)](https://pkg.go.dev/github.com/jerbe/jcache@v1.1.9)
 ![](https://img.shields.io/github/languages/code-size/jerbe/jcache?color=blueviolet)
 
-## 说明
+## Introduction
 
-* 该项目为golang库，golang项目引用该库即可使用。`go get github.com/jerbe/jcache/v2`。
-* 此项目是模拟Redis开发的一个轻量的多级缓存集成方案。
-* 可同时运行多种驱动，互不干扰。
-* 支持Redis驱动，或自定义驱动，只要实现 `driver.Cache` 即可。
-* 内置内存缓存驱动。
-* 内存驱动支持分布式，基于`ETCD`的服务发现跟选举策略，会选出其中一台实例当做主节点，其余的为从节点。主节点的每次操作都会使用`gRPC`接口同步到其他从节点上；从节点的写操作会使用`gRPC`请求到主节点上再同步到其他从节点上。以尽量达到高可用和数据的一致性。
+* This project is a Golang library that can be used by Golang projects. You can use it by running `go get github.com/jerbe/jcache/v2`.
+* This project is a lightweight multi-level cache integration solution inspired by Redis.
+* It can run multiple drivers simultaneously without interference.
+* Supports the Redis driver or custom drivers, as long as they implement the `driver.Cache` interface.
+* Built-in memory cache driver.
+* The memory driver supports distribution, based on ETCD service discovery and election strategy. It selects one instance as the master node, and the rest as slave nodes. Every operation on the master node is synchronized to the other slave nodes via a `gRPC` interface, and write operations on slave nodes are first sent to the master node via `gRPC` and then synchronized to the other slave nodes to achieve high availability and data consistency.
 
 
-## 基本架构
 
-现行阶段优先实现功能，未来可能会根据driver的权重指定优先获取顺序。
-当前版本的优先顺序按实例化client时指定的driver顺序。
+## Basic Architecture
+
+At the current stage, functionality is prioritized, and in the future, the priority retrieval order may be specified based on the driver's weight. The current version's priority order is determined by the driver order specified when instantiating the client.
 ```go
-// 实例化一个以redis驱动为优先获取，内存驱动为后取的客户端
+// Instantiate a client with Redis as the preferred driver and memory driver as the fallback.
 client := jcache.NewClient(driver.NewRedis(), driver.NewMemory())
 
 
-// 实例化一个以内存驱动为优先获取，redis驱动为后取的客户端
+// Instantiate a client with memory driver as the preferred driver and Redis as the fallback.
 client := jcache.NewClient(driver.NewMemory(), driver.NewRedis())
 ```
-### 基本架构图
+### Basic Architecture Diagram
+
 ![](./assets/架构图.jpeg)
-## 进度
+## Progress
 
-- [x] Redis驱动支持
-- [x] 本机内存驱动支持
-  - [x] 单机模式支持
-  - [x] 分布式模式支持
-    - [x] 从节点的增量同步
-    - [ ] 节点的全量同步
 
-## 案例
+- [x] Redis driver support
+- [x] Native memory driver support
+- [x] Standalone mode support
+  - [x] Distributed mode support
+    - [x] Incremental synchronization of slave nodes
+    - [ ] Full synchronization of nodes
+
+## Examples
 ```shell
   go get github.com/jerbe/jcache/v2
 ```
@@ -56,43 +58,43 @@ import (
 )
 
 func main(){
-	// 实例化一个以内存作为驱动的缓存客户端
+// Instantiate a cache client with memory as the driver
     client := jcache.NewClient()
 
-	// 实例化一个分布式的内存驱动缓存客户端
+// Instantiate a distributed memory cache client
     cfg := driver.DistributeMemoryConfig{
-		Port: 10080,         // 用于启动grpc服务端口,同机器请设置不同端口
-        Prefix: "/prefix",   //根据自己的业务设置对应前缀
-		// EtcdCfg 根据自己部署的ETCD服务设置对应配置
+		Port: 10080,         // Port for starting the gRPC server, please set different ports for the same machine
+        Prefix: "/prefix",   // Set the corresponding prefix according to your business needs
+		// EtcdCfg is set according to the configuration of your deployed ETCD service
         EtcdCfg: clientv3.Config{
 			Endpoints: []string{"127.0.0.1:2379"}
 		}
     }
 	client := driver.NewDistributeMemory(cfg)
-	
-	
-	
-    // 支持所有操作的客户端,包括 String,Hash,List 
+
+
+
+// Client that supports all operations, including String, Hash, List, etc.
 	client := jcache.NewClient(driver.NewMemory())
 	client.Set(context.Background(),"hello","world", time.Hour)
 	client.Get(context.Background(),"hello")
 	client.MGet(context.Background(),"hello","hi")
 	...
-		
-	// 仅支持 String 操作的客户端 
+
+    // Client that supports only String operations
 	stringClient := jcache.NewStringClien(driver.NewMemory()); 
 	stringClient.Set(context.Background(),"hello","world", time.Hour)
 	stringClient.Get(context.Background(),"hello")
 	stringClient.MGet(context.Background(),"hello","hi")
 	...
-	
-	// 仅支持 Hash 操作的客户端
+
+    // Client that supports only Hash operations
 	hashClient := jcache.NewHashClient(driver.NewMemory()); 
 	hashClient.HSet(context.Background(),"hello","world","boom")
 	hashClient.HGet(context.Background(),"hello","world")
 	...
-	
-	// 仅支持 List 操作的客户端 
+
+// Client that supports only List operations
 	listClient := jcache.NewListClient(driver.NewMemory());
 	listClient.Push(context.Background(),"hello","world")
 	listClient.Pop(context.Background(),"hello")
