@@ -16,6 +16,7 @@ var (
 	ErrNoRecord      = errors.New("no record")
 )
 
+// ErrorValuer 带返回错误的值对象
 type ErrorValuer interface {
 	Err() error
 }

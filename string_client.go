@@ -18,9 +18,9 @@ type StringClient struct {
 }
 
 func NewStringClient(drivers ...driver.String) *StringClient {
-	drs := make([]driver.Common, len(drivers))
+	drs := make([]driver.Common, 0)
 	for i := 0; i < len(drivers); i++ {
-		drs[i] = drivers[i]
+		drs = append(drs, drivers[i])
 	}
 
 	if len(drs) == 0 {

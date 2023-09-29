@@ -2,6 +2,8 @@ package jcache
 
 import (
 	"context"
+	"github.com/redis/go-redis/v9"
+	"reflect"
 	"testing"
 	"time"
 
@@ -161,6 +163,40 @@ func Test_Client_ExpireAt(t *testing.T) {
 			}
 			if err := cli.ExpireAt(tt.args.ctx, tt.args.key, tt.args.at); (err != nil) != tt.wantErr {
 				t.Errorf("ExpireAt() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestBaseClient_Persist(t *testing.T) {
+	cli := newClient()
+	cli.Set(context.Background(), "ABC", "abc", 0)
+	type args struct {
+		ctx context.Context
+		key string
+	}
+	tests := []struct {
+		name string
+		args args
+		want driver.BoolValuer
+	}{
+		{
+			name: "设置成功",
+			args: args{
+				ctx: context.Background(),
+				key: "ABC",
+			},
+			want: func() driver.BoolValuer {
+				cmd := &redis.BoolCmd{}
+				cmd.SetVal(true)
+				return cmd
+			}(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cli.Persist(tt.args.ctx, tt.args.key); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Persist() = %v, want %v", got, tt.want)
 			}
 		})
 	}

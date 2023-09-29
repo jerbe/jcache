@@ -22,6 +22,25 @@ type Cache interface {
 	String
 	Hash
 	List
+	SortedSet
+}
+
+// Common 通用接口
+type Common interface {
+	// Del 删除一个或多个key
+	Del(ctx context.Context, keys ...string) IntValuer
+
+	// Exists 判断某个Key是否存在
+	Exists(ctx context.Context, keys ...string) IntValuer
+
+	// Expire 设置某个key的存活时间
+	Expire(ctx context.Context, key string, ttl time.Duration) BoolValuer
+
+	// ExpireAt 设置某个key在指定时间内到期
+	ExpireAt(ctx context.Context, key string, at time.Time) BoolValuer
+
+	// Persist 将某个Key设置成持久性
+	Persist(ctx context.Context, key string) BoolValuer
 }
 
 // String 字符串
@@ -102,22 +121,35 @@ type List interface {
 	LLen(ctx context.Context, key string) IntValuer
 }
 
-// Common 通用接口
-type Common interface {
-	// Del 删除一个或多个key
-	Del(ctx context.Context, keys ...string) IntValuer
+// SortedSet 排序集合
+type SortedSet interface {
+	Common
 
-	// Exists 判断某个Key是否存在
-	Exists(ctx context.Context, keys ...string) IntValuer
+	ZAdd(ctx context.Context, key string, members ...Z) IntValuer
 
-	// Expire 设置某个key的存活时间
-	Expire(ctx context.Context, key string, ttl time.Duration) BoolValuer
+	ZCard(ctx context.Context, key string) IntValuer
 
-	// ExpireAt 设置某个key在指定时间内到期
-	ExpireAt(ctx context.Context, key string, at time.Time) BoolValuer
+	ZCount(ctx context.Context, key, min, max string) IntValuer
 
-	// Persist 将某个Key设置成持久性
-	Persist(ctx context.Context, key string) BoolValuer
+	ZIncrBy(ctx context.Context, key string, incr float64, member string) FloatValuer
+
+	ZRange(ctx context.Context, key string, start, stop int64) StringSliceValuer
+
+	ZRangeByScore(ctx context.Context, key string, opt *ZRangeBy) StringSliceValuer
+
+	ZRank(ctx context.Context, key, member string) IntValuer
+
+	ZRem(ctx context.Context, key string, members ...interface{}) IntValuer
+
+	ZRemRangeByRank(ctx context.Context, key string, start, stop int64) IntValuer
+
+	ZRemRangeByScore(ctx context.Context, key, min, max string) IntValuer
+
+	ZRevRange(ctx context.Context, key string, start, stop int64) StringSliceValuer
+
+	ZRevRank(ctx context.Context, key, member string) IntValuer
+
+	ZScore(ctx context.Context, key, member string) FloatValuer
 }
 
 // ================================================================================================
@@ -201,8 +233,25 @@ type FloatValuer interface {
 	Result() (float64, error)
 }
 
+//---------------------------------------------------------------------
+
+type Z = redis.Z
+
+type ZRangeBy = redis.ZRangeBy
+
+//---------------------------------------------------------------------
+
+// nilErrors 用于判断是否是空值的错误列表,用于统一返回错误,方便下游错误判断
+var nilErrors = []error{redis.Nil, MemoryNil}
+
+// RegisterNilError 注册返回空值错误
+func RegisterNilError(err error) {
+	nilErrors = append(nilErrors, err)
+}
+
+// translateErr 翻译错误,如果遇到返回空值错误就统一成 errors.Nil
 func translateErr(err error) error {
-	if cerr.IsIn(err, redis.Nil, MemoryNil) {
+	if cerr.IsIn(err, nilErrors...) {
 		return errors.Nil
 	}
 	return err

@@ -28,6 +28,8 @@ func IsNil(v interface{}) bool {
 	return true
 }
 
+type CompareFunc func(left, right interface{}) bool
+
 // LT 小于
 func LT(left, right interface{}) bool {
 	switch v := left.(type) {

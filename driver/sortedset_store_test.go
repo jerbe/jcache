@@ -22,7 +22,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 	type args struct {
 		ctx     context.Context
 		key     string
-		members []Z
+		members []SZ
 	}
 	tests := []struct {
 		name    string
@@ -35,7 +35,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "A", Score: 1.0},
 				},
 			},
@@ -47,7 +47,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "A", Score: 0.0},
 				},
 			},
@@ -59,7 +59,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "B", Score: 0.0},
 				},
 			},
@@ -71,7 +71,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "C", Score: -1.0},
 				},
 			},
@@ -83,7 +83,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "C", Score: 2.0},
 				},
 			},
@@ -95,7 +95,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "D", Score: 99.0},
 				},
 			},
@@ -107,7 +107,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "E", Score: 98.0},
 				},
 			},
@@ -119,7 +119,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "F", Score: -98.0},
 				},
 			},
@@ -131,7 +131,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "F", Score: 99.0},
 				},
 			},
@@ -143,7 +143,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "E", Score: 0.0},
 				},
 			},
@@ -155,7 +155,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "D", Score: 99},
 				},
 			},
@@ -167,7 +167,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 			args: args{
 				ctx: context.TODO(),
 				key: "abc",
-				members: []Z{
+				members: []SZ{
 					{Member: "D", Score: 3},
 				},
 			},
@@ -191,10 +191,10 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 
 func Test_sortSetStore_X_ZAdd(t *testing.T) {
 
-	m := []Z{}
+	m := []SZ{}
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 1000; i++ {
-		m = append(m, Z{Member: fmt.Sprintf("%x", rand.Int63()), Score: rand.Float64()})
+		m = append(m, SZ{Member: fmt.Sprintf("%x", rand.Int63()), Score: rand.Float64()})
 	}
 	start := time.Now()
 	cnt, err := sx.ZAdd(context.Background(), "abc", m...)
@@ -206,17 +206,17 @@ var sx = newSortSetStore()
 
 func Benchmark_sortSetStore_ZAdd(b *testing.B) {
 	s := sx
-	b.SetParallelism(1000)
+	b.SetParallelism(10000)
 	rand.Seed(time.Now().UnixNano())
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			b.StopTimer()
-			members := make([]Z, 0)
+			members := make([]SZ, 0)
 			var key = strconv.FormatInt(rand.Int63n(5), 16)
 			for i := 0; i < 20; i++ {
 				var member = strconv.FormatInt(rand.Int63(), 16)
 				var score = rand.Float64()
-				members = append(members, Z{
+				members = append(members, SZ{
 					Score:  score,
 					Member: member,
 				})
@@ -233,11 +233,11 @@ func Benchmark_sortSetStore_ZAdd(b *testing.B) {
 func Test_sortSetStore_ZRange(t *testing.T) {
 	s := newSortSetStore()
 	s.ZAdd(context.TODO(), "abc",
-		Z{Score: 2, Member: "A"},
-		Z{Score: 1, Member: "B"},
-		Z{Score: 3, Member: "C"},
-		Z{Score: 4, Member: "D"},
-		Z{Score: 5, Member: "E"},
+		SZ{Score: 2, Member: "A"},
+		SZ{Score: 1, Member: "B"},
+		SZ{Score: 3, Member: "C"},
+		SZ{Score: 4, Member: "D"},
+		SZ{Score: 5, Member: "E"},
 	)
 
 	type args struct {
@@ -345,9 +345,9 @@ func Test_sortSetStore_ZRem(t *testing.T) {
 	s := sx
 	KEY := "ABC"
 
-	member := []Z{}
+	member := []SZ{}
 	for i := 0; i < 10; i++ {
-		member = append(member, Z{Member: strconv.Itoa(i), Score: float64(i)})
+		member = append(member, SZ{Member: strconv.Itoa(i), Score: float64(i)})
 	}
 	s.ZAdd(context.TODO(), KEY, member...)
 	type args struct {
@@ -408,9 +408,9 @@ func Test_sortSetStore_ZRemRangeByRank(t *testing.T) {
 	s := sx
 	KEY := "ABC"
 
-	member := []Z{}
+	member := []SZ{}
 	for i := 0; i < 10; i++ {
-		member = append(member, Z{Member: strconv.Itoa(i), Score: float64(i)})
+		member = append(member, SZ{Member: strconv.Itoa(i), Score: float64(i)})
 	}
 	s.ZAdd(context.TODO(), KEY, member...)
 	type args struct {
@@ -471,13 +471,120 @@ func Test_sortSetStore_ZRemRangeByRank(t *testing.T) {
 	}
 }
 
+func Test_sortedSetStore_ZRemRangeByScore(t *testing.T) {
+	s := sx
+	KEY := "ABC"
+
+	member := []SZ{}
+	for i := 0; i < 10; i++ {
+		member = append(member, SZ{Member: strconv.Itoa(i), Score: float64(i)})
+	}
+	s.ZAdd(context.TODO(), KEY, member...)
+	type args struct {
+		ctx context.Context
+		key string
+		min string
+		max string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    int64
+		wantErr bool
+	}{
+		{
+			name: "删除成功,0,1",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				min: "0",
+				max: "1",
+			},
+			want: 2,
+		},
+		{
+			name: "删除成功,(2,3",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				min: "(2",
+				max: "3",
+			},
+			want: 1,
+		},
+		{
+			name: "删除成功,2,(4",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				min: "2",
+				max: "(4",
+			},
+			want: 1,
+		},
+		{
+			name: "删除成功,-inf,4",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				min: "-inf",
+				max: "4",
+			},
+			want: 1,
+		},
+		{
+			name: "删除成功,(6,8",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				min: "(6",
+				max: "8",
+			},
+			want: 2,
+		},
+		{
+			name: "删除成功,(6,+inf",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				min: "(6",
+				max: "+inf",
+			},
+			want: 1,
+		},
+		{
+			name: "删除成功,-inf,+inf",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				min: "-inf",
+				max: "+inf",
+			},
+			want: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.ZRemRangeByScore(tt.args.ctx, tt.args.key, tt.args.min, tt.args.max)
+			t.Logf("剩余数据:%+v", s.values[KEY].(*sortedSetValue).rankList)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ZRemRangeByScore() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("ZRemRangeByScore() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_sortSetStore_ZRevRange(t *testing.T) {
 	s := sx
 	KEY := "ABC"
 
-	member := []Z{}
+	member := []SZ{}
 	for i := 0; i < 10; i++ {
-		member = append(member, Z{Member: strconv.Itoa(i), Score: float64(i)})
+		member = append(member, SZ{Member: strconv.Itoa(i), Score: float64(i)})
 	}
 	s.ZAdd(context.TODO(), KEY, member...)
 	type args struct {
@@ -522,6 +629,194 @@ func Test_sortSetStore_ZRevRange(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ZRevRange() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_sortedSetStore_ZRangeByScore(t *testing.T) {
+	s := sx
+	KEY := "ABC"
+
+	member := []SZ{}
+	for i := 0; i < 10; i++ {
+		member = append(member, SZ{Member: strconv.Itoa(i), Score: float64(i)})
+	}
+	s.ZAdd(context.TODO(), KEY, member...)
+	type args struct {
+		ctx context.Context
+		key string
+		opt *ZRangeBy
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "获取正常,0,5",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "0", Max: "5"},
+			},
+			want: []string{"0", "1", "2", "3", "4", "5"},
+		},
+		{
+			name: "获取正常,(0,5",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "(0", Max: "5"},
+			},
+			want: []string{"1", "2", "3", "4", "5"},
+		},
+		{
+			name: "获取正常,(0,(5",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "(0", Max: "(5"},
+			},
+			want: []string{"1", "2", "3", "4"},
+		},
+		{
+			name: "获取正常,(0,(5, 2,2",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "(0", Max: "(5", Offset: 2, Count: 2},
+			},
+			want: []string{"3", "4"},
+		},
+		{
+			name: "获取正常,(0,(2, 2,2",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "(0", Max: "(2", Offset: 2, Count: 2},
+			},
+			want: nil,
+		},
+		{
+			name: "获取正常,0,2, 2,2",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "0", Max: "2", Offset: 2, Count: 2},
+			},
+			want: []string{"2"},
+		},
+		{
+			name: "获取正常,0,2, 0,2",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "0", Max: "2", Offset: 0, Count: 2},
+			},
+			want: []string{"0", "1"},
+		},
+		{
+			name: "获取正常,5,9, 3,2",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "5", Max: "9", Offset: 3, Count: 2},
+			},
+			want: []string{"8", "9"},
+		},
+		{
+			name: "获取正常,-inf,9, 3,2",
+			args: args{
+				ctx: context.TODO(),
+				key: KEY,
+				opt: &ZRangeBy{Min: "-inf", Max: "9", Offset: 3, Count: 2},
+			},
+			want: []string{"3", "4"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.ZRangeByScore(tt.args.ctx, tt.args.key, tt.args.opt)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ZRangeByScore() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ZRangeByScore() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_sortedSetStore_ZCard(t *testing.T) {
+	s := sx
+	KEY := "ABC"
+
+	member := []SZ{}
+	for i := 0; i < 10; i++ {
+		member = append(member, SZ{Member: strconv.Itoa(i), Score: float64(i)})
+	}
+	s.ZAdd(context.TODO(), KEY, member...)
+
+	type args struct {
+		ctx context.Context
+		key string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    int64
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.ZCard(tt.args.ctx, tt.args.key)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ZCard() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("ZCard() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_sortedSetStore_ZRank(t *testing.T) {
+	s := sx
+	KEY := "ABC"
+
+	member := []SZ{}
+	for i := 0; i < 10; i++ {
+		member = append(member, SZ{Member: strconv.Itoa(i), Score: float64(i)})
+	}
+	s.ZAdd(context.TODO(), KEY, member...)
+	type args struct {
+		ctx    context.Context
+		key    string
+		member string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    int64
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.ZRank(tt.args.ctx, tt.args.key, tt.args.member)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ZRank() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("ZRank() got = %v, want %v", got, tt.want)
 			}
 		})
 	}

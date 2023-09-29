@@ -22,12 +22,6 @@ var (
 	ErrNoCacheClient = errors.ErrNoCacheClient
 )
 
-// Z 表示已排序的集合成员。
-type Z struct {
-	Score  float64
-	Member interface{}
-}
-
 // returnable 检测值是否可以返回
 func returnable(val errors.ErrorValuer) bool {
 	return val.Err() == nil || !jerrors.IsIn(val.Err(), redis.Nil, driver.MemoryNil)
@@ -109,6 +103,20 @@ func (cli *BaseClient) ExpireAt(ctx context.Context, key string, at time.Time) d
 	return value
 }
 
+// Persist 设置某个key成为持久性的
+func (cli *BaseClient) Persist(ctx context.Context, key string) driver.BoolValuer {
+	ctx, _ = cli.preCheck(ctx)
+
+	var value driver.BoolValuer
+	for i, c := range cli.drivers {
+		if v := c.Persist(ctx, key); i == 0 {
+			value = v
+		}
+	}
+
+	return value
+}
+
 // =======================================================
 // ================= Client ==============================
 // =======================================================
@@ -118,14 +126,15 @@ type Client struct {
 	StringClient
 	HashClient
 	ListClient
+	SortedSetClient
 }
 
 // NewClient 实例化出一个客户端
 func NewClient(drivers ...driver.Cache) *Client {
-	drs := make([]driver.Common, len(drivers))
+	drs := make([]driver.Common, 0)
 
 	for i := 0; i < len(drivers); i++ {
-		drs[i] = drivers[i]
+		drs = append(drs, drivers[i])
 	}
 
 	if len(drs) == 0 {
@@ -135,9 +144,10 @@ func NewClient(drivers ...driver.Cache) *Client {
 	cli := BaseClient{drivers: drs}
 
 	return &Client{
-		BaseClient:   cli,
-		StringClient: StringClient{BaseClient: cli},
-		HashClient:   HashClient{BaseClient: cli},
-		ListClient:   ListClient{BaseClient: cli},
+		BaseClient:      cli,
+		StringClient:    StringClient{BaseClient: cli},
+		HashClient:      HashClient{BaseClient: cli},
+		ListClient:      ListClient{BaseClient: cli},
+		SortedSetClient: SortedSetClient{BaseClient: cli},
 	}
 }

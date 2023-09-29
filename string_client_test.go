@@ -43,10 +43,8 @@ func newStringClient() *StringClient {
 	return NewStringClient(l[0])
 }
 
-var stringCli = newStringClient()
-
 func BenchmarkStringClient(b *testing.B) {
-	cli := stringCli
+	cli := newStringClient()
 
 	rand.Seed(time.Now().UnixNano())
 

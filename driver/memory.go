@@ -39,6 +39,8 @@ type Memory struct {
 
 	ls *listStore
 
+	sts *sortedSetStore
+
 	syncer *memorySyncer
 }
 
@@ -51,8 +53,9 @@ func NewMemory() Cache {
 	ss := newStringStore()
 	hs := newHashStore()
 	ls := newListStore()
+	sts := newSortSetStore()
 
-	storeList := []baseStoreer{ss, hs, ls}
+	storeList := []baseStoreer{ss, hs, ls, sts}
 
 	return &Memory{
 		rwMutex:   sync.RWMutex{},
@@ -60,6 +63,7 @@ func NewMemory() Cache {
 		ss:        ss,
 		hs:        hs,
 		ls:        ls,
+		sts:       sts,
 	}
 }
 
@@ -912,5 +916,349 @@ func (m *Memory) LLen(ctx context.Context, key string) IntValuer {
 	v, err := m.ls.LLen(ctx, key)
 	val.SetVal(v)
 	val.SetErr(err)
+	return val
+}
+
+// ==============================================================
+// ======================= Sorted Set ===========================
+// ==============================================================
+
+// ZAdd 添加有序集合的元素
+func (m *Memory) ZAdd(ctx context.Context, key string, members ...Z) IntValuer {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
+	val := new(redis.IntCmd)
+
+	if err := utils.ContextIsDone(ctx); err != nil {
+		val.SetErr(err)
+		return val
+	}
+
+	values := make([]string, 0, len(members)*2+1)
+	values = append(values, key)
+	for _, member := range members {
+		mb, _ := marshalData(member.Member)
+		score, _ := marshalData(member.Score)
+		values = append(values, mb, score)
+	}
+
+	// 设置本地,并同步到从节点
+	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
+		v, err := m.zAdd(ctx, key, values[1:]...)
+		val.SetVal(v)
+		val.SetErr(translateErr(err))
+
+		if m.syncer != nil && err == nil {
+			m.syncToSlave(proto.Action_LShift, values...)
+		}
+		return val
+	}
+
+	// 访问主节点并返回数据
+	rsp, err := m.syncToMaster(proto.Action_LShift, values...)
+	val.SetErr(err)
+	if err == nil {
+		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		val.SetVal(cnt)
+	}
+	return val
+}
+
+func (m *Memory) zAdd(ctx context.Context, key string, values ...string) (int64, error) {
+	// 检测该Key是否被其他类型用了
+	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
+		return 0, err
+	}
+
+	if len(values)%2 > 1 {
+		return 0, errors.New("params number error")
+	}
+
+	members := make([]SZ, 0, len(values)/2)
+	for i := 0; i < len(values)/2; i++ {
+		f, _ := strconv.ParseFloat(values[i*2+1], 64)
+		members = append(members, SZ{Member: values[i*2], Score: f})
+	}
+
+	return m.sts.ZAdd(ctx, key, members...)
+}
+
+// ZCard 获取有序集合的元素数量
+func (m *Memory) ZCard(ctx context.Context, key string) IntValuer {
+	val := new(redis.IntCmd)
+	v, err := m.sts.ZCard(ctx, key)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
+	return val
+}
+
+// ZCount 返回有序集 key 中， score 值在 min 和 max 之间(默认包括 score 值等于 min 或 max )的成员的数量。
+func (m *Memory) ZCount(ctx context.Context, key, min, max string) IntValuer {
+	val := new(redis.IntCmd)
+	v, err := m.sts.ZCount(ctx, key, min, max)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
+	return val
+}
+
+// ZIncrBy 为有序集 key 的成员 member 的 score 值加上增量 increment 。
+// 可以通过传递一个负数值 increment ，让 score 减去相应的值，比如 ZINCRBY key -5 member ，就是让 member 的 score 值减去 5
+// @return member 成员的新 score 值
+func (m *Memory) ZIncrBy(ctx context.Context, key string, increment float64, member string) FloatValuer {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
+	val := new(redis.FloatCmd)
+
+	if err := utils.ContextIsDone(ctx); err != nil {
+		val.SetErr(err)
+		return val
+	}
+
+	incrementStr, _ := marshalData(increment)
+
+	// 设置本地,并同步到从节点
+	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
+		v, err := m.zIncrBy(ctx, key, increment, member)
+		val.SetVal(v)
+		val.SetErr(translateErr(err))
+
+		if m.syncer != nil && err == nil {
+			m.syncToSlave(proto.Action_LShift, key, incrementStr, member)
+		}
+		return val
+	}
+
+	// 访问主节点并返回数据
+	rsp, err := m.syncToMaster(proto.Action_LShift, key, incrementStr, member)
+	val.SetErr(err)
+	if err == nil {
+		cnt, _ := strconv.ParseFloat(rsp, 64)
+		val.SetVal(cnt)
+	}
+	return val
+}
+
+func (m *Memory) zIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error) {
+	// 检测该Key是否被其他类型用了
+	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
+		return 0, err
+	}
+
+	return m.sts.ZIncrBy(ctx, key, increment, member)
+}
+
+// ZRange 返回有序集 key 中，指定区间内的成员。
+// 其中成员的位置按 score 值递增(从小到大)来排序。
+// 具有相同 score 值的成员按字典序(lexicographical order )来排列。
+// 如果你需要成员按 score 值递减(从大到小)来排列，请使用 ZREVRANGE 命令。
+// 下标参数 start 和 stop 都以 0 为底，也就是说，以 0 表示有序集第一个成员，以 1 表示有序集第二个成员，以此类推。
+// 你也可以使用负数下标，以 -1 表示最后一个成员， -2 表示倒数第二个成员，以此类推。
+func (m *Memory) ZRange(ctx context.Context, key string, start, stop int64) StringSliceValuer {
+	val := new(redis.StringSliceCmd)
+	v, err := m.sts.ZRange(ctx, key, start, stop)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
+	return val
+}
+
+// ZRangeByScore 返回有序集 key 中，所有 score 值介于 min 和 max 之间(包括等于 min 或 max )的成员。有序集成员按 score 值递增(从小到大)次序排列。
+// 具有相同 score 值的成员按字典序(lexicographical order)来排列(该属性是有序集提供的，不需要额外的计算)。
+// 可选的 LIMIT 参数指定返回结果的数量及区间(就像SQL中的 SELECT LIMIT offset, count )，注意当 offset 很大时，定位 offset 的操作可能需要遍历整个有序集，此过程最坏复杂度为 O(N) 时间。
+func (m *Memory) ZRangeByScore(ctx context.Context, key string, opt *ZRangeBy) StringSliceValuer {
+	o := &ZRangeBy{
+		Min:    opt.Min,
+		Max:    opt.Max,
+		Offset: opt.Offset,
+		Count:  opt.Count,
+	}
+	val := new(redis.StringSliceCmd)
+	v, err := m.sts.ZRangeByScore(ctx, key, o)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
+	return val
+}
+
+// ZRank 返回有序集 key 中成员 member 的排名。其中有序集成员按 score 值递增(从小到大)顺序排列。
+// 排名以 0 为底，也就是说， score 值最小的成员排名为 0 。
+func (m *Memory) ZRank(ctx context.Context, key, member string) IntValuer {
+	val := new(redis.IntCmd)
+	v, err := m.sts.ZRank(ctx, key, member)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
+	return val
+}
+
+// ZRem 移除有序集 key 中的一个或多个成员，不存在的成员将被忽略。
+// @return 被成功移除的成员的数量，不包括被忽略的成员
+func (m *Memory) ZRem(ctx context.Context, key string, members ...interface{}) IntValuer {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
+	val := new(redis.IntCmd)
+
+	if err := utils.ContextIsDone(ctx); err != nil {
+		val.SetErr(err)
+		return val
+	}
+
+	values := make([]string, 0, len(members)+1)
+	values = append(values, key)
+	for i := 0; i < len(members); i++ {
+		member, err := marshalData(members[i])
+		if err != nil {
+			val.SetErr(err)
+			return val
+		}
+		values = append(values, member)
+	}
+
+	// 设置本地,并同步到从节点
+	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
+		v, err := m.zRem(ctx, key, values[1:]...)
+		val.SetVal(v)
+		val.SetErr(translateErr(err))
+
+		if m.syncer != nil && err == nil {
+			m.syncToSlave(proto.Action_LShift, values...)
+		}
+		return val
+	}
+
+	// 访问主节点并返回数据
+	rsp, err := m.syncToMaster(proto.Action_LShift, values...)
+	val.SetErr(err)
+	if err == nil {
+		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		val.SetVal(cnt)
+	}
+	return val
+}
+
+func (m *Memory) zRem(ctx context.Context, key string, members ...string) (int64, error) {
+	// 检测该Key是否被其他类型用了
+	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
+		return 0, err
+	}
+
+	return m.sts.ZRem(ctx, key, members...)
+}
+
+// ZRemRangeByRank 移除有序集 key 中，指定排名(rank)区间内的所有成员。
+// 区间分别以下标参数 start 和 stop 指出，包含 start 和 stop 在内。
+// 下标参数 start 和 stop 都以 0 为底，也就是说，以 0 表示有序集第一个成员，以 1 表示有序集第二个成员，以此类推。
+// 你也可以使用负数下标，以 -1 表示最后一个成员， -2 表示倒数第二个成员，以此类推。
+func (m *Memory) ZRemRangeByRank(ctx context.Context, key string, start, stop int64) IntValuer {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
+	val := new(redis.IntCmd)
+
+	if err := utils.ContextIsDone(ctx); err != nil {
+		val.SetErr(err)
+		return val
+	}
+	startStr, _ := marshalData(start)
+	stopStr, _ := marshalData(stop)
+
+	// 设置本地,并同步到从节点
+	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
+		v, err := m.zRemRangeByRank(ctx, key, start, stop)
+		val.SetVal(v)
+		val.SetErr(translateErr(err))
+
+		if m.syncer != nil && err == nil {
+			m.syncToSlave(proto.Action_LShift, key, startStr, stopStr)
+		}
+		return val
+	}
+
+	// 访问主节点并返回数据
+	rsp, err := m.syncToMaster(proto.Action_LShift, key, startStr, stopStr)
+	val.SetErr(err)
+	if err == nil {
+		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		val.SetVal(cnt)
+	}
+	return val
+}
+
+func (m *Memory) zRemRangeByRank(ctx context.Context, key string, start, stop int64) (int64, error) {
+	// 检测该Key是否被其他类型用了
+	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
+		return 0, err
+	}
+
+	return m.sts.ZRemRangeByRank(ctx, key, start, stop)
+}
+
+// ZRemRangeByScore 返回有序集 key 中，所有 score 值介于 min 和 max 之间(包括等于 min 或 max )的成员。
+// 有序集成员按 score 值递增(从小到大)次序排列。
+func (m *Memory) ZRemRangeByScore(ctx context.Context, key, min, max string) IntValuer {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
+	val := new(redis.IntCmd)
+
+	if err := utils.ContextIsDone(ctx); err != nil {
+		val.SetErr(err)
+		return val
+	}
+
+	// 设置本地,并同步到从节点
+	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
+		v, err := m.zRemRangeByScore(ctx, key, min, max)
+		val.SetVal(v)
+		val.SetErr(translateErr(err))
+
+		if m.syncer != nil && err == nil {
+			m.syncToSlave(proto.Action_LShift, key, min, max)
+		}
+		return val
+	}
+
+	// 访问主节点并返回数据
+	rsp, err := m.syncToMaster(proto.Action_LShift, key, min, max)
+	val.SetErr(err)
+	if err == nil {
+		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		val.SetVal(cnt)
+	}
+	return val
+}
+
+func (m *Memory) zRemRangeByScore(ctx context.Context, key, min, max string) (int64, error) {
+	// 检测该Key是否被其他类型用了
+	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
+		return 0, err
+	}
+
+	return m.sts.ZRemRangeByScore(ctx, key, min, max)
+}
+
+// ZRevRange 返回有序集 key 中，指定区间内的成员。
+// 其中成员的位置按 score 值递减(从大到小)来排列。
+// 具有相同 score 值的成员按字典序的逆序(reverse lexicographical order)排列。
+func (m *Memory) ZRevRange(ctx context.Context, key string, start, stop int64) StringSliceValuer {
+	val := new(redis.StringSliceCmd)
+	v, err := m.sts.ZRevRange(ctx, key, start, stop)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
+	return val
+}
+
+// ZRevRank 返回有序集 key 中成员 member 的排名。其中有序集成员按 score 值递减(从大到小)排序。
+// 排名以 0 为底，也就是说， score 值最大的成员排名为 0 。
+func (m *Memory) ZRevRank(ctx context.Context, key, member string) IntValuer {
+	val := new(redis.IntCmd)
+	v, err := m.sts.ZRevRank(ctx, key, member)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
+	return val
+}
+
+// ZScore 返回有序集 key 中，成员 member 的 score 值。
+// 如果 member 元素不是有序集 key 的成员，或 key 不存在，返回 nil 。
+func (m *Memory) ZScore(ctx context.Context, key, member string) FloatValuer {
+	val := new(redis.FloatCmd)
+	v, err := m.sts.ZScore(ctx, key, member)
+	val.SetVal(v)
+	val.SetErr(translateErr(err))
 	return val
 }

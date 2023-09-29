@@ -3,12 +3,13 @@ package driver
 import (
 	"context"
 	"fmt"
-	"github.com/jerbe/jcache/v2/utils"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jerbe/jcache/v2/utils"
 )
 
 /**
@@ -16,11 +17,9 @@ import (
   @describe :
 */
 
-const processCnt = 1000
-
-type Z struct {
-	Score  float64
+type SZ struct {
 	Member string
+	Score  float64
 }
 
 type sortedSetRankList []*sortedSetData
@@ -59,6 +58,15 @@ type sortedSetValue struct {
 
 // Refresh 重新排序,并刷新排行
 func (v *sortedSetValue) Refresh() {
+	v.sortRank()
+
+	for i, data := range v.rankList {
+		data.Rank = i
+	}
+}
+
+func (v *sortedSetValue) sortRank() {
+	// 官方排序法
 	sort.SliceStable(v.rankList, func(i, j int) bool {
 		if v.rankList[i].Score < v.rankList[j].Score {
 			return true
@@ -70,17 +78,10 @@ func (v *sortedSetValue) Refresh() {
 
 		return false
 	})
-
-	for i, data := range v.rankList {
-		data.Rank = i
-	}
 }
 
 // Set 设置数据
-func (v *sortedSetValue) Set(m []Z) int64 {
-	//defer func() {
-	//log.Printf("%+v", v.rankList)
-	//}()
+func (v *sortedSetValue) Set(m []SZ) int64 {
 	newCnt := int64(0)
 	rankLen := len(v.rankList)
 	for _, z := range m {
@@ -136,7 +137,7 @@ func (s *sortedSetStore) Type() driverStoreType {
 }
 
 // ZAdd 添加有序集合的元素
-func (s *sortedSetStore) ZAdd(ctx context.Context, key string, members ...Z) (int64, error) {
+func (s *sortedSetStore) ZAdd(ctx context.Context, key string, members ...SZ) (int64, error) {
 	s.rwMutex.Lock()
 	defer s.rwMutex.Unlock()
 
@@ -192,36 +193,78 @@ func (s *sortedSetStore) ZCount(ctx context.Context, key, min, max string) (int6
 		return 0, nil
 	}
 
-	minop, maxop := utils.LTE, utils.LTE
-	minf, maxf := float64(0), float64(0)
-	var err error
-	if strings.Index(min, "(") > -1 {
+	var (
+		minop      utils.CompareFunc
+		maxop      utils.CompareFunc
+		maxbreakop utils.CompareFunc
+		err        error
+		minf       float64
+		maxf       float64
+		start      = -1
+		stop       = -1
+		listLen    = len(val.rankList)
+	)
+
+	// 操作左区间
+	if min == "-inf" {
+		start = 0
+	} else if strings.Index(min, "(") > -1 {
 		minop = utils.LT
 		min = strings.ReplaceAll(min, "(", "")
 	}
-	minf, err = strconv.ParseFloat(strings.ReplaceAll(min, "(", ""), 64)
-	if err != nil {
-		return 0, err
-	}
 
-	if strings.Index(max, "(") > -1 {
-		maxop = utils.LT
-		max = strings.ReplaceAll(max, "(", "")
-	}
+	if min != "-inf" {
+		minf, err = strconv.ParseFloat(min, 64)
+		if err != nil {
+			return 0, err
+		}
 
-	maxf, err = strconv.ParseFloat(strings.ReplaceAll(max, "(", ""), 64)
-	if err != nil {
-		return 0, err
-	}
-
-	cnt := int64(0)
-	for _, z := range val.rankList {
-		if minop(minf, z.Score) && maxop(z.Score, maxf) {
-			cnt++
+		if minop == nil {
+			minop = utils.LTE
 		}
 	}
 
-	return cnt, nil
+	// 操作右区间
+	if max == "+inf" {
+		stop = listLen - 1
+	} else if strings.Index(max, "(") > -1 {
+		maxop = utils.LT
+		maxbreakop = utils.LTE
+		max = strings.ReplaceAll(max, "(", "")
+	}
+
+	if max != "+inf" {
+		maxf, err = strconv.ParseFloat(max, 64)
+		if err != nil {
+			return 0, err
+		}
+
+		if maxop == nil {
+			maxop = utils.LTE
+		}
+		if maxbreakop == nil {
+			maxbreakop = utils.LT
+		}
+	}
+
+	if minf > maxf {
+		return 0, err
+	}
+
+	for i := 0; i < listLen; i++ {
+		data := val.rankList[i]
+		if maxbreakop != nil && maxbreakop(maxf, data.Score) {
+			break
+		}
+		stop++
+		if (minop == nil || minop(minf, data.Score)) && (maxop == nil || maxop(data.Score, maxf)) {
+			if start == -1 {
+				start = i
+			}
+		}
+	}
+
+	return int64(stop - start + 1), nil
 }
 
 // ZIncrBy 为有序集 key 的成员 member 的 score 值加上增量 increment 。
@@ -237,14 +280,18 @@ func (s *sortedSetStore) ZIncrBy(ctx context.Context, key string, increment floa
 
 	val, ok := s.values[key].(*sortedSetValue)
 	if !ok {
-		return 0, nil
+		val = newSortSetValue()
+		s.values[key] = val
 	}
 
 	data, ok := val.mapping[member]
 	if !ok {
-		return 0, MemoryNil
+		data = &sortedSetData{Member: member}
+		val.mapping[member] = data
+		val.rankList = append(val.rankList, data)
 	}
 	data.Score += increment
+
 	val.Refresh()
 
 	return data.Score, nil
@@ -260,13 +307,15 @@ func (s *sortedSetStore) ZRange(ctx context.Context, key string, start, stop int
 	s.rwMutex.RLock()
 	defer s.rwMutex.RUnlock()
 
+	result := make([]string, 0)
+
 	if err := utils.ContextIsDone(ctx); err != nil {
-		return []string{}, err
+		return result, err
 	}
 
 	val, ok := s.values[key].(*sortedSetValue)
 	if !ok {
-		return []string{}, nil
+		return result, nil
 	}
 
 	listLen := int64(len(val.rankList))
@@ -279,7 +328,7 @@ func (s *sortedSetStore) ZRange(ctx context.Context, key string, start, stop int
 	}
 
 	if listLen == 0 || stop < start || start >= listLen || stop < 0 {
-		return []string{}, nil
+		return result, nil
 	}
 
 	// 提取正确的索引位置
@@ -295,13 +344,133 @@ func (s *sortedSetStore) ZRange(ctx context.Context, key string, start, stop int
 	//stop = listLen - start
 	//start = tmp
 
-	result := make([]string, stop-start+1, stop-start+1)
-	for i := 0; i < len(result); i++ {
-		result[i] = val.rankList[int(start)+i].Member
+	for i := 0; i < int(stop-start+1); i++ {
+		result = append(result, val.rankList[int(start)+i].Member)
 	}
 	//sort.Slice(result, func(i, j int) bool {
 	//	return true
 	//})
+	return result, nil
+}
+
+// ZRangeByScore 返回有序集 key 中，所有 score 值介于 min 和 max 之间(包括等于 min 或 max )的成员。有序集成员按 score 值递增(从小到大)次序排列。
+// 具有相同 score 值的成员按字典序(lexicographical order)来排列(该属性是有序集提供的，不需要额外的计算)。
+// 可选的 LIMIT 参数指定返回结果的数量及区间(就像SQL中的 SELECT LIMIT offset, count )，注意当 offset 很大时，定位 offset 的操作可能需要遍历整个有序集，此过程最坏复杂度为 O(N) 时间。
+func (s *sortedSetStore) ZRangeByScore(ctx context.Context, key string, opt *ZRangeBy) ([]string, error) {
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
+
+	result := make([]string, 0)
+
+	if err := utils.ContextIsDone(ctx); err != nil {
+		return result, err
+	}
+
+	val, ok := s.values[key].(*sortedSetValue)
+	if !ok {
+		return result, nil
+	}
+
+	listLen := len(val.rankList)
+
+	var (
+		min    = opt.Min
+		max    = opt.Max
+		offset = opt.Offset
+		count  = opt.Count
+		limit  = opt.Offset != 0 || opt.Count != 0
+
+		minop      utils.CompareFunc
+		maxop      utils.CompareFunc
+		maxbreakop utils.CompareFunc
+		err        error
+		minf       float64
+		maxf       float64
+		start      = -1
+		stop       = -1
+	)
+
+	// LIMIT参数限定为正数
+	if offset < 0 {
+		return result, nil
+	}
+
+	// 操作左区间
+	if min == "-inf" && offset == 0 {
+		start = 0
+	} else if strings.Index(min, "(") > -1 {
+		minop = utils.LT
+		min = strings.ReplaceAll(min, "(", "")
+	}
+
+	if min != "-inf" {
+		minf, err = strconv.ParseFloat(min, 64)
+		if err != nil {
+			return result, err
+		}
+
+		if minop == nil {
+			minop = utils.LTE
+		}
+	}
+
+	// 操作右区间
+	if strings.Index(max, "(") > -1 {
+		maxop = utils.LT
+		maxbreakop = utils.LTE
+		max = strings.ReplaceAll(max, "(", "")
+	}
+
+	if max != "+inf" {
+		maxf, err = strconv.ParseFloat(max, 64)
+		if err != nil {
+			return result, err
+		}
+
+		if maxop == nil {
+			maxop = utils.LTE
+		}
+		if maxbreakop == nil {
+			maxbreakop = utils.LT
+		}
+	}
+
+	for i := 0; i < listLen; i++ {
+		data := val.rankList[i]
+		if (maxbreakop != nil && maxbreakop(maxf, data.Score)) || (count == 0 && limit) {
+			break
+		}
+		stop++
+
+		// 判断起始位置
+		if (minop == nil || minop(minf, data.Score)) && (maxop == nil || maxop(data.Score, maxf)) {
+			if offset == 0 && start == -1 {
+				start = i
+			}
+			// 判断最终位置
+			if offset == 0 && count > 0 {
+				count--
+			}
+
+			if offset > 0 {
+				offset--
+			}
+		}
+
+	}
+
+	// 超过限制了
+	if start == -1 {
+		return result, nil
+	}
+
+	if stop >= listLen {
+		stop = listLen - 1
+	}
+
+	for i := 0; i < stop-start+1; i++ {
+		result = append(result, val.rankList[start+i].Member)
+	}
 	return result, nil
 }
 
@@ -450,43 +619,77 @@ func (s *sortedSetStore) ZRemRangeByScore(ctx context.Context, key, min, max str
 	if listLen == 0 {
 		return 0, nil
 	}
-	minop, maxop, maxbreakop := utils.LTE, utils.LTE, utils.LT
-	minf, maxf := float64(0), float64(0)
-	var err error
-	if strings.Index(min, "(") > -1 {
+
+	var (
+		minop      utils.CompareFunc
+		maxop      utils.CompareFunc
+		maxbreakop utils.CompareFunc
+		err        error
+		minf       float64
+		maxf       float64
+		start      = -1
+		stop       = -1
+	)
+
+	// 操作左区间
+	if min == "-inf" {
+		start = 0
+	} else if strings.Index(min, "(") > -1 {
 		minop = utils.LT
 		min = strings.ReplaceAll(min, "(", "")
 	}
-	minf, err = strconv.ParseFloat(strings.ReplaceAll(min, "(", ""), 64)
-	if err != nil {
-		return 0, err
+
+	if min != "-inf" {
+		minf, err = strconv.ParseFloat(min, 64)
+		if err != nil {
+			return 0, err
+		}
+
+		if minop == nil {
+			minop = utils.LTE
+		}
 	}
-	if strings.Index(max, "(") > -1 {
+
+	// 操作右区间
+	if max == "+inf" {
+		stop = listLen - 1
+	} else if strings.Index(max, "(") > -1 {
 		maxop = utils.LT
-		max = strings.ReplaceAll(max, "(", "")
 		maxbreakop = utils.LTE
+		max = strings.ReplaceAll(max, "(", "")
 	}
-	maxf, err = strconv.ParseFloat(strings.ReplaceAll(max, "(", ""), 64)
-	if err != nil {
-		return 0, err
+
+	if max != "+inf" {
+		maxf, err = strconv.ParseFloat(max, 64)
+		if err != nil {
+			return 0, err
+		}
+
+		if maxop == nil {
+			maxop = utils.LTE
+		}
+		if maxbreakop == nil {
+			maxbreakop = utils.LT
+		}
 	}
 
 	affectCnt := 0
-
-	start := -1
-	stop := -1
 	for i := 0; i < listLen; i++ {
 		data := val.rankList[i]
+		if maxbreakop != nil && maxbreakop(maxf, data.Score) {
+			break
+		}
 		stop++
-		if minop(minf, data.Score) && maxop(data.Score, maxf) {
+		if (minop == nil || minop(minf, data.Score)) && (maxop == nil || maxop(data.Score, maxf)) {
 			if start == -1 {
 				start = i
 			}
 			delete(val.mapping, data.Member)
 		}
-		if maxbreakop(maxf, data.Score) {
-			break
-		}
+	}
+
+	if stop >= listLen {
+		stop = listLen - 1
 	}
 
 	affectCnt = stop - start + 1
@@ -506,13 +709,15 @@ func (s *sortedSetStore) ZRevRange(ctx context.Context, key string, start, stop 
 	s.rwMutex.RLock()
 	defer s.rwMutex.RUnlock()
 
+	result := make([]string, 0)
+
 	if err := utils.ContextIsDone(ctx); err != nil {
-		return []string{}, err
+		return result, err
 	}
 
 	val, ok := s.values[key].(*sortedSetValue)
 	if !ok {
-		return []string{}, nil
+		return result, nil
 	}
 
 	listLen := int64(len(val.rankList))
@@ -525,7 +730,7 @@ func (s *sortedSetStore) ZRevRange(ctx context.Context, key string, start, stop 
 	}
 
 	if listLen == 0 || stop < start || start >= listLen || stop < 0 {
-		return []string{}, nil
+		return result, nil
 	}
 
 	// 提取正确的索引位置
@@ -542,9 +747,8 @@ func (s *sortedSetStore) ZRevRange(ctx context.Context, key string, start, stop 
 	stop = listLen - start
 	start = tmp
 
-	result := make([]string, stop-start+1, stop-start+1)
-	for i := 0; i < len(result); i++ {
-		result[i] = val.rankList[int(start-1)+i].Member
+	for i := 0; i < int(stop-start+1); i++ {
+		result = append(result, val.rankList[int(start-1)+i].Member)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
@@ -576,6 +780,8 @@ func (s *sortedSetStore) ZRevRank(ctx context.Context, key, member string) (int6
 	return int64(val.rankList[len(val.rankList)-1].Rank - data.Rank), nil
 }
 
+// ZScore 返回有序集 key 中，成员 member 的 score 值。
+// 如果 member 元素不是有序集 key 的成员，或 key 不存在，返回 nil 。
 func (s *sortedSetStore) ZScore(ctx context.Context, key, member string) (float64, error) {
 	s.rwMutex.RLock()
 	defer s.rwMutex.RUnlock()
