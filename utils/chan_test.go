@@ -13,7 +13,7 @@ import (
 
 func TestSignal(t *testing.T) {
 	sig := NewSignal()
-	ch := sig.Subscribe()
+	sb := sig.Subscribe()
 
 	go func() {
 		//ticker := time.Tick(time.Second)
@@ -31,7 +31,7 @@ func TestSignal(t *testing.T) {
 
 	for {
 		select {
-		case s := <-ch:
+		case s := <-sb.C:
 			fmt.Println("sig:", s)
 			if s == 0 {
 				return

@@ -125,6 +125,16 @@ func (m *Memory) checkKeyAble(key string, storeType driverStoreType) (bool, erro
 	return true, nil
 }
 
+// checkKeysAble 检测 Keys 是否是合法的key
+func (m *Memory) checkKeysAble(keys []string, storeType driverStoreType) (bool, error) {
+	for _, k := range keys {
+		if s, b := m.checkKeyExists(k); b && s.Type() != storeType {
+			return false, fmt.Errorf("the key[%s] is already of type '%s' and cannot be set to type'%s'", k, s.Type(), storeType)
+		}
+	}
+	return true, nil
+}
+
 // syncToSlave 同步数据到各个终端
 func (m *Memory) syncToSlave(action proto.Action, values ...string) {
 	// 没有同步器就退出
@@ -140,13 +150,14 @@ func (m *Memory) syncToSlave(action proto.Action, values ...string) {
 }
 
 // syncToMaster 同步数据到主节点
-func (m *Memory) syncToMaster(action proto.Action, values ...string) (string, error) {
+func (m *Memory) syncToMaster(action proto.Action, values ...string) ([]string, error) {
+	empty := make([]string, 1)
 	if m.syncer == nil {
-		return "", errors.New("Memory: no syncer")
+		return empty, errors.New("Memory: no syncer")
 	}
 
 	if m.syncer.isMaster {
-		return "", errors.New("Memory: syncer no master")
+		return empty, errors.New("Memory: syncer no a slave node")
 	}
 
 	return m.syncer.syncToMaster(action, values...)
@@ -178,8 +189,6 @@ func (m *Memory) Exists(ctx context.Context, keys ...string) IntValuer {
 
 // Del 删除一个或多个key
 func (m *Memory) Del(ctx context.Context, keys ...string) IntValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
 
 	result := &redis.IntCmd{}
 	select {
@@ -205,13 +214,15 @@ func (m *Memory) Del(ctx context.Context, keys ...string) IntValuer {
 		return result
 	}
 
-	i, err := strconv.ParseInt(rsp, 10, 64)
+	i, err := strconv.ParseInt(rsp[0], 10, 64)
 	result.SetErr(err)
 	result.SetVal(i)
 	return result
 }
 
 func (m *Memory) del(ctx context.Context, keys ...string) int64 {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
 	cnt := int64(0)
 	for _, store := range m.storeList {
 		i, _ := store.Del(ctx, keys...)
@@ -222,9 +233,6 @@ func (m *Memory) del(ctx context.Context, keys ...string) int64 {
 
 // Expire 设置某个key的存活时间
 func (m *Memory) Expire(ctx context.Context, key string, ttl time.Duration) BoolValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
-
 	result := &redis.BoolCmd{}
 	select {
 	case <-ctx.Done():
@@ -253,13 +261,15 @@ func (m *Memory) Expire(ctx context.Context, key string, ttl time.Duration) Bool
 		result.SetErr(err)
 		return result
 	}
-	if rsp == "1" {
+	if rsp[0] == "1" {
 		result.SetVal(true)
 	}
 	return result
 }
 
 func (m *Memory) expire(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
 	for _, store := range m.storeList {
 		// Todo 错误收集
 		b, err := store.Expire(ctx, key, ttl)
@@ -275,11 +285,7 @@ func (m *Memory) expire(ctx context.Context, key string, ttl time.Duration) (boo
 
 // ExpireAt 设置某个key在指定时间内到期
 func (m *Memory) ExpireAt(ctx context.Context, key string, at time.Time) BoolValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
-
 	result := &redis.BoolCmd{}
-
 	select {
 	case <-ctx.Done():
 		result.SetErr(ctx.Err())
@@ -308,13 +314,15 @@ func (m *Memory) ExpireAt(ctx context.Context, key string, at time.Time) BoolVal
 		return result
 	}
 
-	if rsp == "1" {
+	if rsp[0] == "1" {
 		result.SetVal(true)
 	}
 	return result
 }
 
 func (m *Memory) expireAt(ctx context.Context, key string, at *time.Time) (bool, error) {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
 	for _, store := range m.storeList {
 		// Todo 错误收集
 		b, err := store.ExpireAt(ctx, key, *at)
@@ -332,10 +340,7 @@ func (m *Memory) expireAt(ctx context.Context, key string, at *time.Time) (bool,
 // Persist 删除key的过期时间,并设置成持久性
 // 注意,持久化后最长也也不会超过 ValueMaxTTL
 func (m *Memory) Persist(ctx context.Context, key string) BoolValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
 	result := &redis.BoolCmd{}
-
 	// 设置到本地,并同步到从节点
 	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
 		b, err := m.persist(ctx, key)
@@ -356,13 +361,15 @@ func (m *Memory) Persist(ctx context.Context, key string) BoolValuer {
 		return result
 	}
 
-	if rsp == "1" {
+	if rsp[0] == "1" {
 		result.SetVal(true)
 	}
 	return result
 }
 
 func (m *Memory) persist(ctx context.Context, key string) (bool, error) {
+	m.rwMutex.Lock()
+	defer m.rwMutex.Unlock()
 	for _, store := range m.storeList {
 		// Todo 错误收集
 		b, err := store.Persist(ctx, key)
@@ -382,8 +389,7 @@ func (m *Memory) persist(ctx context.Context, key string) (bool, error) {
 
 // Set 设置数据
 func (m *Memory) Set(ctx context.Context, key string, data interface{}, expiration time.Duration) StatusValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.StatusCmd)
 
 	select {
@@ -415,23 +421,25 @@ func (m *Memory) Set(ctx context.Context, key string, data interface{}, expirati
 	}
 	// 同步到主节点
 	rsp, err := m.syncToMaster(proto.Action_Set, key, value, ttl)
-	val.SetVal(rsp)
+	val.SetVal(rsp[0])
 	val.SetErr(err)
 	return val
 }
 
 func (m *Memory) set(ctx context.Context, key, value string, expiration time.Duration) error {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeString); err != nil {
 		return err
 	}
+
 	return m.ss.Set(ctx, key, value, expiration)
 }
 
 // SetNX 设置数据,如果key不存在的话
 func (m *Memory) SetNX(ctx context.Context, key string, data interface{}, expiration time.Duration) BoolValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.BoolCmd)
 
 	select {
@@ -462,15 +470,18 @@ func (m *Memory) SetNX(ctx context.Context, key string, data interface{}, expira
 
 	// 同步到主节点
 	rsp, err := m.syncToMaster(proto.Action_SetNX, key, value, ttl)
-	val.SetVal(rsp == "1")
+	val.SetVal(rsp[0] == "1")
 	val.SetErr(err)
 	return val
 }
 
 func (m *Memory) setNX(ctx context.Context, key, data string, expiration time.Duration) (bool, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	if _, b := m.checkKeyExists(key); b {
 		return false, nil
 	}
+
 	return m.ss.SetNX(ctx, key, data, expiration)
 }
 
@@ -513,8 +524,7 @@ func (m *Memory) HExists(ctx context.Context, key, field string) BoolValuer {
 
 // HDel 哈希表删除指定字段(fields)
 func (m *Memory) HDel(ctx context.Context, key string, fields ...string) IntValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.IntCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -540,7 +550,7 @@ func (m *Memory) HDel(ctx context.Context, key string, fields ...string) IntValu
 	// 同步到主节点
 	rsp, err := m.syncToMaster(proto.Action_HDel, values...)
 	if err == nil {
-		i, _ := strconv.ParseInt(rsp, 10, 64)
+		i, _ := strconv.ParseInt(rsp[0], 10, 64)
 		val.SetVal(i)
 	}
 
@@ -549,17 +559,19 @@ func (m *Memory) HDel(ctx context.Context, key string, fields ...string) IntValu
 }
 
 func (m *Memory) hDel(ctx context.Context, key string, fields ...string) (int64, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeHash); err != nil {
 		return 0, err
 	}
+
 	return m.hs.HDel(ctx, key, fields...)
 }
 
 // HSet 哈希表设置数据
 func (m *Memory) HSet(ctx context.Context, key string, data ...interface{}) IntValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.IntCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -602,7 +614,7 @@ func (m *Memory) HSet(ctx context.Context, key string, data ...interface{}) IntV
 	// 剩下的是从节点操作
 	rsp, err := m.syncToMaster(proto.Action_HSet, values...)
 	if err == nil {
-		i, _ := strconv.ParseInt(rsp, 10, 64)
+		i, _ := strconv.ParseInt(rsp[0], 10, 64)
 		val.SetVal(i)
 	}
 	val.SetErr(err)
@@ -610,10 +622,13 @@ func (m *Memory) HSet(ctx context.Context, key string, data ...interface{}) IntV
 }
 
 func (m *Memory) hSet(ctx context.Context, key string, data ...string) (int64, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeHash); err != nil {
 		return 0, err
 	}
+
 	if len(data)%2 != 0 {
 		return 0, errors.New("the number of parameters is incorrect")
 	}
@@ -622,8 +637,7 @@ func (m *Memory) hSet(ctx context.Context, key string, data ...string) (int64, e
 
 // HSetNX 如果哈希表的field不存在,则设置成功
 func (m *Memory) HSetNX(ctx context.Context, key, field string, data interface{}) BoolValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.BoolCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -650,7 +664,7 @@ func (m *Memory) HSetNX(ctx context.Context, key, field string, data interface{}
 
 	// 剩下的是从节点同步到主节点
 	rsp, err := m.syncToMaster(proto.Action_HSetNx, key, field, value)
-	if err == nil && rsp == "1" {
+	if err == nil && rsp[0] == "1" {
 		val.SetVal(true)
 	}
 	val.SetErr(err)
@@ -658,10 +672,14 @@ func (m *Memory) HSetNX(ctx context.Context, key, field string, data interface{}
 }
 
 func (m *Memory) hSetNX(ctx context.Context, key, field, value string) (bool, error) {
+	m.rwMutex.RLock()
+
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeHash); err != nil {
 		return false, err
 	}
+
 	return m.hs.HSetNX(ctx, key, field, value)
 }
 
@@ -729,8 +747,7 @@ func (m *Memory) HLen(ctx context.Context, key string) IntValuer {
 // 下标(index)参数 start 和 stop 都以 0 为底，也就是说，以 0 表示列表的第一个元素，以 1 表示列表的第二个元素，以此类推。
 // 你也可以使用负数下标，以 -1 表示列表的最后一个元素， -2 表示列表的倒数第二个元素，以此类推。
 func (m *Memory) LTrim(ctx context.Context, key string, start, stop int64) StatusValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.StatusCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -757,12 +774,14 @@ func (m *Memory) LTrim(ctx context.Context, key string, start, stop int64) Statu
 
 	// 剩下的是从节点同步到主节点
 	rsp, err := m.syncToMaster(proto.Action_LTrim, key, startStr, stopStr)
-	val.SetVal(rsp)
+	val.SetVal(rsp[0])
 	val.SetErr(err)
 	return val
 }
 
 func (m *Memory) lTrim(ctx context.Context, key string, start, stop int64) error {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeList); err != nil {
 		return err
@@ -772,8 +791,6 @@ func (m *Memory) lTrim(ctx context.Context, key string, start, stop int64) error
 
 // LPush 将数据推入到列表中
 func (m *Memory) LPush(ctx context.Context, key string, data ...interface{}) IntValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
 
 	val := new(redis.IntCmd)
 
@@ -808,13 +825,15 @@ func (m *Memory) LPush(ctx context.Context, key string, data ...interface{}) Int
 	rsp, err := m.syncToMaster(proto.Action_LPush, values...)
 	val.SetErr(err)
 	if err == nil {
-		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		cnt, _ := strconv.ParseInt(rsp[0], 10, 64)
 		val.SetVal(cnt)
 	}
 	return val
 }
 
 func (m *Memory) lPush(ctx context.Context, key string, values ...string) (int64, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeList); err != nil {
 		return 0, err
@@ -834,8 +853,7 @@ func (m *Memory) LRang(ctx context.Context, key string, start, stop int64) Strin
 
 // LPop 推出列表尾的最后数据
 func (m *Memory) LPop(ctx context.Context, key string) StringValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.StringCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -857,12 +875,14 @@ func (m *Memory) LPop(ctx context.Context, key string) StringValuer {
 
 	// 访问主节点并返回数据
 	rsp, err := m.syncToMaster(proto.Action_LPop, key)
-	val.SetVal(rsp)
+	val.SetVal(rsp[0])
 	val.SetErr(err)
 	return val
 }
 
 func (m *Memory) lPop(ctx context.Context, key string) (string, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeList); err != nil {
 		return "", err
@@ -871,10 +891,57 @@ func (m *Memory) lPop(ctx context.Context, key string) (string, error) {
 	return m.ls.LPop(ctx, key)
 }
 
+// LBPop 推出列表尾的最后数据
+func (m *Memory) LBPop(ctx context.Context, timeout time.Duration, keys ...string) StringSliceValuer {
+
+	val := new(redis.StringSliceCmd)
+
+	if err := utils.ContextIsDone(ctx); err != nil {
+		val.SetErr(err)
+		return val
+	}
+
+	values := make([]string, 0, len(keys)+1)
+	timeoutStr, _ := marshalData(timeout)
+	values = append(values, timeoutStr)
+	values = append(values, keys...)
+
+	// 设置本地,并同步到从节点
+	if m.syncer == nil || (m.syncer != nil && m.syncer.isMaster) {
+		v, err := m.lBPop(ctx, timeout, keys...)
+		val.SetVal(v)
+		val.SetErr(translateErr(err))
+
+		if m.syncer != nil && err == nil {
+			for _, k := range keys {
+				m.syncToSlave(proto.Action_LPop, k)
+			}
+		}
+		return val
+	}
+
+	// 访问主节点并返回数据
+	rsp, err := m.syncToMaster(proto.Action_LBPop, values...)
+	val.SetVal(rsp)
+	val.SetErr(err)
+	return val
+}
+
+func (m *Memory) lBPop(ctx context.Context, timeout time.Duration, keys ...string) ([]string, error) {
+	m.rwMutex.RLock()
+	// 检测该Key是否被其他类型用了
+	if _, err := m.checkKeysAble(keys, driverStoreTypeList); err != nil {
+		m.rwMutex.RUnlock()
+		return nil, err
+	}
+	m.rwMutex.RUnlock()
+
+	return m.ls.LBPop(ctx, timeout, keys...)
+}
+
 // LShift 推出列表头的第一个数据
 func (m *Memory) LShift(ctx context.Context, key string) StringValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.StringCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -896,12 +963,14 @@ func (m *Memory) LShift(ctx context.Context, key string) StringValuer {
 
 	// 访问主节点并返回数据
 	rsp, err := m.syncToMaster(proto.Action_LShift, key)
-	val.SetVal(rsp)
+	val.SetVal(rsp[0])
 	val.SetErr(err)
 	return val
 }
 
 func (m *Memory) lShift(ctx context.Context, key string) (string, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeList); err != nil {
 		return "", err
@@ -925,8 +994,7 @@ func (m *Memory) LLen(ctx context.Context, key string) IntValuer {
 
 // ZAdd 添加有序集合的元素
 func (m *Memory) ZAdd(ctx context.Context, key string, members ...Z) IntValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.IntCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -958,13 +1026,15 @@ func (m *Memory) ZAdd(ctx context.Context, key string, members ...Z) IntValuer {
 	rsp, err := m.syncToMaster(proto.Action_LShift, values...)
 	val.SetErr(err)
 	if err == nil {
-		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		cnt, _ := strconv.ParseInt(rsp[0], 10, 64)
 		val.SetVal(cnt)
 	}
 	return val
 }
 
 func (m *Memory) zAdd(ctx context.Context, key string, values ...string) (int64, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
 		return 0, err
@@ -1005,8 +1075,7 @@ func (m *Memory) ZCount(ctx context.Context, key, min, max string) IntValuer {
 // 可以通过传递一个负数值 increment ，让 score 减去相应的值，比如 ZINCRBY key -5 member ，就是让 member 的 score 值减去 5
 // @return member 成员的新 score 值
 func (m *Memory) ZIncrBy(ctx context.Context, key string, increment float64, member string) FloatValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.FloatCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -1032,13 +1101,15 @@ func (m *Memory) ZIncrBy(ctx context.Context, key string, increment float64, mem
 	rsp, err := m.syncToMaster(proto.Action_LShift, key, incrementStr, member)
 	val.SetErr(err)
 	if err == nil {
-		cnt, _ := strconv.ParseFloat(rsp, 64)
+		cnt, _ := strconv.ParseFloat(rsp[0], 64)
 		val.SetVal(cnt)
 	}
 	return val
 }
 
 func (m *Memory) zIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
 		return 0, err
@@ -1091,8 +1162,7 @@ func (m *Memory) ZRank(ctx context.Context, key, member string) IntValuer {
 // ZRem 移除有序集 key 中的一个或多个成员，不存在的成员将被忽略。
 // @return 被成功移除的成员的数量，不包括被忽略的成员
 func (m *Memory) ZRem(ctx context.Context, key string, members ...interface{}) IntValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.IntCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -1127,13 +1197,15 @@ func (m *Memory) ZRem(ctx context.Context, key string, members ...interface{}) I
 	rsp, err := m.syncToMaster(proto.Action_LShift, values...)
 	val.SetErr(err)
 	if err == nil {
-		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		cnt, _ := strconv.ParseInt(rsp[0], 10, 64)
 		val.SetVal(cnt)
 	}
 	return val
 }
 
 func (m *Memory) zRem(ctx context.Context, key string, members ...string) (int64, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
 		return 0, err
@@ -1147,8 +1219,7 @@ func (m *Memory) zRem(ctx context.Context, key string, members ...string) (int64
 // 下标参数 start 和 stop 都以 0 为底，也就是说，以 0 表示有序集第一个成员，以 1 表示有序集第二个成员，以此类推。
 // 你也可以使用负数下标，以 -1 表示最后一个成员， -2 表示倒数第二个成员，以此类推。
 func (m *Memory) ZRemRangeByRank(ctx context.Context, key string, start, stop int64) IntValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.IntCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -1174,13 +1245,15 @@ func (m *Memory) ZRemRangeByRank(ctx context.Context, key string, start, stop in
 	rsp, err := m.syncToMaster(proto.Action_LShift, key, startStr, stopStr)
 	val.SetErr(err)
 	if err == nil {
-		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		cnt, _ := strconv.ParseInt(rsp[0], 10, 64)
 		val.SetVal(cnt)
 	}
 	return val
 }
 
 func (m *Memory) zRemRangeByRank(ctx context.Context, key string, start, stop int64) (int64, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
 		return 0, err
@@ -1192,8 +1265,7 @@ func (m *Memory) zRemRangeByRank(ctx context.Context, key string, start, stop in
 // ZRemRangeByScore 返回有序集 key 中，所有 score 值介于 min 和 max 之间(包括等于 min 或 max )的成员。
 // 有序集成员按 score 值递增(从小到大)次序排列。
 func (m *Memory) ZRemRangeByScore(ctx context.Context, key, min, max string) IntValuer {
-	m.rwMutex.Lock()
-	defer m.rwMutex.Unlock()
+
 	val := new(redis.IntCmd)
 
 	if err := utils.ContextIsDone(ctx); err != nil {
@@ -1217,13 +1289,15 @@ func (m *Memory) ZRemRangeByScore(ctx context.Context, key, min, max string) Int
 	rsp, err := m.syncToMaster(proto.Action_LShift, key, min, max)
 	val.SetErr(err)
 	if err == nil {
-		cnt, _ := strconv.ParseInt(rsp, 10, 64)
+		cnt, _ := strconv.ParseInt(rsp[0], 10, 64)
 		val.SetVal(cnt)
 	}
 	return val
 }
 
 func (m *Memory) zRemRangeByScore(ctx context.Context, key, min, max string) (int64, error) {
+	m.rwMutex.RLock()
+	defer m.rwMutex.RUnlock()
 	// 检测该Key是否被其他类型用了
 	if _, err := m.checkKeyAble(key, driverStoreTypeSortedSet); err != nil {
 		return 0, err

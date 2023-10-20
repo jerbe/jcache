@@ -63,7 +63,8 @@ func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.
 	switch in.Action {
 	case proto.Action_Del:
 		val := memory.del(context.Background(), in.Values...)
-		rsp.Value, _ = marshalData(val)
+		data, _ := marshalData(val)
+		rsp.Value = append(rsp.Value, data)
 	case proto.Action_Expire:
 		var i int64
 		i, err = strconv.ParseInt(in.Values[1], 10, 64)
@@ -71,7 +72,7 @@ func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.
 			var b bool
 			b, err = memory.expire(context.Background(), in.Values[0], time.Duration(i))
 			if b {
-				rsp.Value = "1"
+				rsp.Value = append(rsp.Value, "1")
 			}
 		}
 	case proto.Action_ExpireAt:
@@ -81,14 +82,14 @@ func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.
 			var b bool
 			b, err = memory.expireAt(context.Background(), in.Values[0], &t)
 			if b {
-				rsp.Value = "1"
+				rsp.Value = append(rsp.Value, "1")
 			}
 		}
 	case proto.Action_Persist:
 		var b bool
 		b, err = memory.persist(context.Background(), in.Values[0])
 		if b {
-			rsp.Value = "1"
+			rsp.Value = append(rsp.Value, "1")
 		}
 	case proto.Action_Set:
 		var i int64
@@ -96,7 +97,7 @@ func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.
 		if err == nil {
 			err = memory.set(context.Background(), in.Values[0], in.Values[1], time.Duration(i))
 			if err == nil {
-				rsp.Value = "OK"
+				rsp.Value = append(rsp.Value, "OK")
 			}
 		}
 	case proto.Action_SetNX:
@@ -106,44 +107,47 @@ func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.
 			var b bool
 			b, err = memory.setNX(context.Background(), in.Values[0], in.Values[1], time.Duration(i))
 			if b {
-				rsp.Value = "1"
+				rsp.Value = append(rsp.Value, "1")
 			}
 		}
 	case proto.Action_HDel:
 		var i int64
 		i, err = memory.hDel(context.Background(), in.Values[0], in.Values[1:]...)
 		if err == nil {
-			rsp.Value, _ = marshalData(i)
+			data, _ := marshalData(i)
+			rsp.Value = append(rsp.Value, data)
 		}
 	case proto.Action_HSet:
 		var i int64
 		i, err = memory.hSet(context.Background(), in.Values[0], in.Values[1:]...)
 		if err == nil {
-			rsp.Value, _ = marshalData(i)
+			data, _ := marshalData(i)
+			rsp.Value = append(rsp.Value, data)
 		}
 	case proto.Action_HSetNx:
 		var b bool
 		b, err = memory.hSetNX(context.Background(), in.Values[0], in.Values[1], in.Values[2])
 		if b {
-			rsp.Value = "1"
+			rsp.Value = append(rsp.Value, "1")
 		}
 	case proto.Action_LPush:
 		var i int64
 		i, err = memory.lPush(context.Background(), in.Values[0], in.Values[1:]...)
 		if err == nil {
-			rsp.Value, _ = marshalData(i)
+			data, _ := marshalData(i)
+			rsp.Value = append(rsp.Value, data)
 		}
 	case proto.Action_LPop:
 		var v string
 		v, err = memory.lPop(context.Background(), in.Values[0])
 		if err == nil {
-			rsp.Value = v
+			rsp.Value = append(rsp.Value, v)
 		}
 	case proto.Action_LShift:
 		var v string
 		v, err = memory.lShift(context.Background(), in.Values[0])
 		if err == nil {
-			rsp.Value = v
+			rsp.Value = append(rsp.Value, v)
 		}
 	case proto.Action_LTrim:
 		var start, stop int64
@@ -151,7 +155,14 @@ func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.
 		stop, err = strconv.ParseInt(in.Values[2], 10, 64)
 		err = memory.lTrim(context.Background(), in.Values[0], start, stop)
 		if err == nil {
-			rsp.Value = "OK"
+			rsp.Value = append(rsp.Value, "OK")
+		}
+	case proto.Action_LBPop:
+		i, _ := strconv.ParseInt(in.Values[0], 10, 64)
+		var v []string
+		v, err = memory.lBPop(context.Background(), time.Duration(i), in.Values...)
+		if err == nil {
+			rsp.Value = v
 		}
 	default:
 		err = errors.New("unknown action")
@@ -166,6 +177,10 @@ func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.
 			statusCode = codes.InvalidArgument
 		}
 		err = status.New(statusCode, err.Error()).Err()
+	}
+
+	if len(rsp.Value) == 0 {
+		rsp.Value = append(rsp.Value, "")
 	}
 
 	return rsp, err
@@ -519,6 +534,7 @@ func (s *memorySyncer) election(ctx context.Context) error {
 		return err
 	}
 	election := concurrency.NewElection(session, s.etcdElectionPrefix)
+
 	go func() {
 		var r bool
 		observerCh := election.Observe(ctx)
@@ -764,31 +780,32 @@ func (s *memorySyncer) syncToSlaves(action proto.Action, values ...string) {
 	req := &proto.SyncRequest{Action: action, Values: values}
 	for _, endpoint := range s.slaveEndpoints {
 		if !endpoint.isMaster {
-			endpoint.cli.Slave(context.TODO(), req)
+			go endpoint.cli.Slave(context.TODO(), req)
 		}
 	}
 }
 
 // syncToMaster 同步数据到主节点
-func (s *memorySyncer) syncToMaster(action proto.Action, values ...string) (string, error) {
+func (s *memorySyncer) syncToMaster(action proto.Action, values ...string) ([]string, error) {
 	s.rwMutex.RLock()
 	defer s.rwMutex.RUnlock()
+	empty := make([]string, 1)
 	if !s.isMaster && s.masterEndpoint != nil {
 		req := &proto.SyncRequest{Action: action, Values: values}
 		rsp, err := s.masterEndpoint.cli.Master(context.TODO(), req)
 		if err != nil {
-			statu := status.Convert(err)
-			switch statu.Code() {
+			stat := status.Convert(err)
+			switch stat.Code() {
 			case codes.NotFound:
 				err = MemoryNil
 			default:
-				err = errors.New(statu.Message())
+				err = errors.New(stat.Message())
 			}
-			return "", err
+			return empty, err
 		}
 		return rsp.Value, nil
 	}
-	return "", nil
+	return empty, nil
 }
 
 func (s *memorySyncer) setMemory(memory *Memory) {

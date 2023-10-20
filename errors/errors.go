@@ -13,7 +13,6 @@ import (
 var (
 	Nil              = errors.New("jcache: nil")
 	ErrNoCacheClient = errors.New("no cache client init")
-	ErrNoRecord      = errors.New("no record")
 )
 
 // ErrorValuer 带返回错误的值对象

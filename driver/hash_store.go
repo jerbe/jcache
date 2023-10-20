@@ -66,8 +66,8 @@ func (s *hashStore) Type() driverStoreType {
 // HSet("myhash", MyHash{"value1", "value2"}) 警告：redis-server >= 4.0
 // 对于struct，可以是结构体指针类型，我们只解析标签为redis的字段。如果你不想读取该字段，可以使用 `redis:"-"` 标志来忽略它，或者不需要设置 redis 标签。对于结构体字段的类型，我们只支持简单的数据类型：string、int/uint(8,16,32,64)、float(32,64)、time.Time(to RFC3339Nano)、time.Duration(to Nanoseconds) ），如果是其他更复杂或者自定义的数据类型，请实现encoding.BinaryMarshaler接口。
 func (s *hashStore) HSet(ctx context.Context, key string, data ...string) (int64, error) {
-	s.rwMutex.RLock()
-	defer s.rwMutex.RUnlock()
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
 
 	select {
 	case <-ctx.Done():
@@ -146,8 +146,8 @@ func (s *hashStore) HExists(ctx context.Context, key, field string) (bool, error
 
 // HDel 哈希表删除指定字段(fields)
 func (s *hashStore) HDel(ctx context.Context, key string, fields ...string) (int64, error) {
-	s.rwMutex.RLock()
-	defer s.rwMutex.RUnlock()
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
 
 	select {
 	case <-ctx.Done():

@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"github.com/jerbe/jcache/v2/utils"
 	"sort"
 	"sync"
 	"time"
@@ -36,6 +37,8 @@ func newListValue() *listValue {
 
 type listStore struct {
 	baseStore
+
+	evtSig *utils.Signal
 }
 
 func newListStore() *listStore {
@@ -46,6 +49,7 @@ func newListStore() *listStore {
 			rwMutex:      sync.RWMutex{},
 			expireTicker: ticker,
 		},
+		evtSig: utils.NewSignal(),
 	}
 
 	go store.checkExpireTick()
@@ -78,6 +82,10 @@ func (s *listStore) LPush(ctx context.Context, key string, data ...string) (int6
 
 		val.value = append(val.value, data...)
 		s.values[key] = val
+
+		// 通道中写入事件
+		s.evtSig.Publish(key)
+
 		return int64(len(val.value)), nil
 	}
 }
@@ -230,6 +238,99 @@ func (s *listStore) LPop(ctx context.Context, key string) (string, error) {
 	}
 }
 
+// LBPop 推出列表尾的最后数据
+// 列表顺序 先推入在左,后推入在右 [a,b,c,d,e]
+// LPop得到的数据应该是'a'
+func (s *listStore) LBPop(ctx context.Context, timeout time.Duration, keys ...string) ([]string, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	result := make([]string, 0)
+
+	get := func() ([]string, bool) {
+		s.rwMutex.Lock()
+		defer func() {
+			s.rwMutex.Unlock()
+		}()
+
+		rst := make([]string, 0)
+		for _, key := range keys {
+			val, ok := s.values[key].(*listValue)
+			if !ok {
+				continue
+			}
+
+			listLen := len(val.value)
+			if listLen == 0 {
+				delete(s.values, key)
+				continue
+			}
+
+			item := val.value[0]
+			if len(val.value) == 1 {
+				val.value = nil
+				delete(s.values, key)
+			} else {
+				val.value = val.value[1:listLen:listLen]
+			}
+			rst = append(rst, key, item)
+			return rst, true
+		}
+		return rst, false
+	}
+
+	// 先尝试获取一次,没有获取到再进入循环获取
+	rst, ok := get()
+	if ok {
+		return rst, nil
+	}
+
+	sb := s.evtSig.Subscribe()
+	defer sb.Close()
+
+	if timeout == 0 {
+		//循环至死
+		for {
+			select {
+			case <-ctx.Done():
+				return result, ctx.Err()
+			case k := <-sb.C:
+				for _, key := range keys {
+					if key == k {
+						if rst, ok = get(); ok {
+							return rst, nil
+						}
+					}
+				}
+			default:
+			}
+		}
+	}
+
+	timer := time.NewTimer(timeout)
+	// 循环到指定时间
+	for {
+		select {
+		case <-ctx.Done():
+			return result, ctx.Err()
+		case <-timer.C:
+			return result, MemoryNil
+		case k := <-sb.C:
+			for _, key := range keys {
+				if key == k {
+					if rst, ok = get(); ok {
+						return rst, nil
+					}
+				}
+			}
+		default:
+		}
+	}
+}
+
 // LShift 推出列表头的第一个数据
 // 列表顺序 先推入在左,后推入在右 [a,b,c,d,e]
 // LShift得到的数据应该是'e'
@@ -267,8 +368,8 @@ func (s *listStore) LShift(ctx context.Context, key string) (string, error) {
 
 // LLen 列表长度
 func (s *listStore) LLen(ctx context.Context, key string) (int64, error) {
-	s.rwMutex.Lock()
-	defer s.rwMutex.Unlock()
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
 
 	select {
 	case <-ctx.Done():

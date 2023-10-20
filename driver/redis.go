@@ -108,6 +108,7 @@ func NewRedisListDriver(opt *RedisOptions) Hash {
 // Del 删除一个或多个key
 func (r *Redis) Del(ctx context.Context, keys ...string) IntValuer {
 	cmd := r.cli.Del(ctx, keys...)
+
 	cmd.SetErr(translateErr(cmd.Err()))
 	return cmd
 }
@@ -277,6 +278,13 @@ func (r *Redis) LRang(ctx context.Context, key string, start, stop int64) String
 // LPop 推出列表尾的最后数据
 func (r *Redis) LPop(ctx context.Context, key string) StringValuer {
 	cmd := r.cli.RPop(ctx, key)
+	cmd.SetErr(translateErr(cmd.Err()))
+	return cmd
+}
+
+// LBPop 推出列表尾的最后数据
+func (r *Redis) LBPop(ctx context.Context, timeout time.Duration, keys ...string) StringSliceValuer {
+	cmd := r.cli.BRPop(ctx, timeout, keys...)
 	cmd.SetErr(translateErr(cmd.Err()))
 	return cmd
 }

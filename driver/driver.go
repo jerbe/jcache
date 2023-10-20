@@ -114,6 +114,9 @@ type List interface {
 	// LPop 推出列表尾的最后数据
 	LPop(ctx context.Context, key string) StringValuer
 
+	// LBPop 移出并获取列表的最后一个元素， 如果列表没有元素会阻塞列表直到等待超时或发现可弹出元素为止
+	LBPop(ctx context.Context, timeout time.Duration, keys ...string) StringSliceValuer
+
 	// LShift 推出列表头的第一个数据
 	LShift(ctx context.Context, key string) StringValuer
 

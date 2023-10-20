@@ -190,7 +190,7 @@ func Test_sortSetStore_ZAdd(t *testing.T) {
 }
 
 func Test_sortSetStore_X_ZAdd(t *testing.T) {
-
+	sx := newSortSetStore()
 	m := []SZ{}
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 1000; i++ {
@@ -202,10 +202,8 @@ func Test_sortSetStore_X_ZAdd(t *testing.T) {
 	fmt.Println("耗时:", time.Now().Sub(start), "成员数量:", cnt, "错误:", err)
 }
 
-var sx = newSortSetStore()
-
 func Benchmark_sortSetStore_ZAdd(b *testing.B) {
-	s := sx
+	s := newSortSetStore()
 	b.SetParallelism(10000)
 	rand.Seed(time.Now().UnixNano())
 	b.RunParallel(func(pb *testing.PB) {
@@ -342,7 +340,7 @@ func Test_sortSetStore_ZRange(t *testing.T) {
 }
 
 func Test_sortSetStore_ZRem(t *testing.T) {
-	s := sx
+	s := newSortSetStore()
 	KEY := "ABC"
 
 	member := []SZ{}
@@ -405,7 +403,7 @@ func Test_sortSetStore_ZRem(t *testing.T) {
 }
 
 func Test_sortSetStore_ZRemRangeByRank(t *testing.T) {
-	s := sx
+	s := newSortSetStore()
 	KEY := "ABC"
 
 	member := []SZ{}
@@ -472,7 +470,7 @@ func Test_sortSetStore_ZRemRangeByRank(t *testing.T) {
 }
 
 func Test_sortedSetStore_ZRemRangeByScore(t *testing.T) {
-	s := sx
+	s := newSortSetStore()
 	KEY := "ABC"
 
 	member := []SZ{}
@@ -579,7 +577,7 @@ func Test_sortedSetStore_ZRemRangeByScore(t *testing.T) {
 }
 
 func Test_sortSetStore_ZRevRange(t *testing.T) {
-	s := sx
+	s := newSortSetStore()
 	KEY := "ABC"
 
 	member := []SZ{}
@@ -635,7 +633,7 @@ func Test_sortSetStore_ZRevRange(t *testing.T) {
 }
 
 func Test_sortedSetStore_ZRangeByScore(t *testing.T) {
-	s := sx
+	s := newSortSetStore()
 	KEY := "ABC"
 
 	member := []SZ{}
@@ -751,7 +749,7 @@ func Test_sortedSetStore_ZRangeByScore(t *testing.T) {
 }
 
 func Test_sortedSetStore_ZCard(t *testing.T) {
-	s := sx
+	s := newSortSetStore()
 	KEY := "ABC"
 
 	member := []SZ{}
@@ -787,7 +785,7 @@ func Test_sortedSetStore_ZCard(t *testing.T) {
 }
 
 func Test_sortedSetStore_ZRank(t *testing.T) {
-	s := sx
+	s := newSortSetStore()
 	KEY := "ABC"
 
 	member := []SZ{}

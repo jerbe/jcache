@@ -82,8 +82,8 @@ func (ss *stringStore) Set(ctx context.Context, key, data string, expiration tim
 
 // SetNX 设置数据,如果key不存在的话
 func (ss *stringStore) SetNX(ctx context.Context, key, data string, expiration time.Duration) (bool, error) {
-	ss.rwMutex.RLock()
-	defer ss.rwMutex.RUnlock()
+	ss.rwMutex.Lock()
+	defer ss.rwMutex.Unlock()
 
 	select {
 	case <-ctx.Done():

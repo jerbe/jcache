@@ -2,7 +2,7 @@ syntax = "proto3";
 
 option go_package=".;proto";
 
-package proto;
+package jcache.driver.proto;
 
 service Syncer{
   rpc Slave(SyncRequest) returns (SyncResponse){}
@@ -31,6 +31,7 @@ enum Action {
     LPop = 61;
     LShift = 62;
     LTrim = 63;
+    LBPop = 64;
     }
 
 // RunRequest 执行请求参数
@@ -41,5 +42,5 @@ message SyncRequest {
 
 // RunResponse 执行返回参数
 message SyncResponse {
-  string value = 1;
+  repeated string value = 1;
 }

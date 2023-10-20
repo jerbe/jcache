@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/jerbe/jcache/v2/driver"
 	"github.com/redis/go-redis/v9"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"log"
 	"reflect"
 	"testing"
 )
@@ -15,7 +17,31 @@ import (
 */
 
 func testNewSortedSetClient() *SortedSetClient {
-	return NewSortedSetClient()
+	redisCli := redis.NewClient(&redis.Options{
+		Addr:     "192.168.31.101:6379",
+		Password: "root",
+	})
+	redisCli.Del(context.Background(), "ABC")
+
+	opts := &driver.RedisOptions{
+		//Config: &driver.RedisConfig{Addrs: []string{"192.168.31.101:6379"}, Password: "root"},
+		Client: redisCli,
+	}
+
+	redisDriver := driver.NewRedis(opts)
+	distributeMemoryCfg := driver.DistributeMemoryConfig{
+		Prefix:   "mytest",
+		Port:     8088,
+		Username: "root",
+		Password: "root",
+		EtcdCfg:  clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}},
+		Context:  nil,
+	}
+	m, err := driver.NewDistributeMemory(distributeMemoryCfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return NewSortedSetClient(m, redisDriver)
 }
 
 func Test_NewSortedSetClient(t *testing.T) {
@@ -218,7 +244,6 @@ func TestSortedSetClient_ZCard(t *testing.T) {
 			if got := cli.ZCard(tt.args.ctx, tt.args.key); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ZCard() = %v, want %v", got, tt.want)
 			}
-
 		})
 	}
 }
