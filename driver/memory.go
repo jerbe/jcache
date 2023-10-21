@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/jerbe/jcache/v2/driver/proto"
-	"github.com/jerbe/jcache/v2/utils"
+
+	utils "github.com/jerbe/go-utils"
 
 	"github.com/redis/go-redis/v9"
 	v3 "go.etcd.io/etcd/client/v3"
@@ -67,7 +68,11 @@ func NewMemory() Cache {
 	}
 }
 
-type DistributeMemoryConfig struct {
+// EtcdConfig 使用ETCD服务的配置
+type EtcdConfig = v3.Config
+
+// MemoryConfig 内存配置
+type MemoryConfig struct {
 	// Prefix 业务名前缀,如果用于隔离不同业务
 	Prefix string
 
@@ -80,15 +85,15 @@ type DistributeMemoryConfig struct {
 	// Password 密码
 	Password string
 
-	// EtcdCfg 用于启用ETCD的服务
-	EtcdCfg v3.Config
+	// EtcdConfig 用于启用ETCD的服务
+	EtcdConfig EtcdConfig
 
 	// Context 上下文
 	Context context.Context
 }
 
-// NewDistributeMemory 实例化一个分布式的内存核心的缓存驱动
-func NewDistributeMemory(cfg DistributeMemoryConfig) (Cache, error) {
+// NewMemoryWithConfig 实例化一个分布式的内存核心的缓存驱动
+func NewMemoryWithConfig(cfg MemoryConfig) (Cache, error) {
 	mem := NewMemory().(*Memory)
 	syncer, err := newMemorySyncer(&cfg)
 	if err != nil {

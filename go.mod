@@ -11,6 +11,7 @@ require (
 require (
 	github.com/golang/protobuf v1.5.3
 	github.com/jerbe/go-errors v1.0.1
+	github.com/jerbe/go-utils v1.0.2 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.9
 	google.golang.org/grpc v1.58.2
 	google.golang.org/protobuf v1.31.0

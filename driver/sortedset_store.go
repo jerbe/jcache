@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jerbe/jcache/v2/utils"
+	utils "github.com/jerbe/go-utils"
 )
 
 /**

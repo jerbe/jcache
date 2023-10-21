@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/jerbe/jcache/v2/driver/proto"
-	"github.com/jerbe/jcache/v2/utils"
+
+	utils "github.com/jerbe/go-utils"
 
 	v3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
@@ -170,10 +171,9 @@ func (s *syncerServer) sync(ctx context.Context, in *proto.SyncRequest) (*proto.
 
 	if err != nil {
 		var statusCode codes.Code
-		switch err {
-		case MemoryNil:
+		if errors.Is(err, MemoryNil) {
 			statusCode = codes.NotFound
-		default:
+		} else {
 			statusCode = codes.InvalidArgument
 		}
 		err = status.New(statusCode, err.Error()).Err()
@@ -388,7 +388,7 @@ type memorySyncer struct {
 }
 
 // newMemorySyncer 初始化一个内存同步器
-func newMemorySyncer(cfg *DistributeMemoryConfig) (*memorySyncer, error) {
+func newMemorySyncer(cfg *MemoryConfig) (*memorySyncer, error) {
 	prefix := strings.TrimPrefix(cfg.Prefix, "/")
 	port := cfg.Port
 
@@ -408,9 +408,22 @@ func newMemorySyncer(cfg *DistributeMemoryConfig) (*memorySyncer, error) {
 	}
 
 	//grpc.
-	etcdCli, err := v3.New(cfg.EtcdCfg)
+	etcdCli, err := v3.New(cfg.EtcdConfig)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.EtcdConfig.DialTimeout > 0 {
+		ctx := cfg.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		timeOutCtx, cancel := context.WithTimeout(ctx, cfg.EtcdConfig.DialTimeout)
+		_, err := etcdCli.Status(timeOutCtx, cfg.EtcdConfig.Endpoints[0])
+		cancel()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 初始化同步服务器
@@ -635,7 +648,7 @@ func (s *memorySyncer) register(ctx context.Context) error {
 	}
 
 	kv := v3.NewKV(s.etcdCli)
-	_, err = kv.Put(ctx, s.etcdServerID, fmt.Sprintf("%s:%d", utils.GetLocalIPv4(), s.port), v3.WithLease(lease.ID))
+	_, err = kv.Put(ctx, s.etcdServerID, fmt.Sprintf("%s:%d", utils.LocalIPv4(), s.port), v3.WithLease(lease.ID))
 	if err != nil {
 		return err
 	}

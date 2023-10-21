@@ -3,7 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
-	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc"
 	"log"
 	"math/rand"
 	"os"
@@ -24,8 +24,8 @@ func TestNewDistributeMemory(t *testing.T) {
 	mems := make([]Cache, 0)
 	for i := 0; i < int(count); i++ {
 		/*
-			cfg := DistributeMemoryConfig{Port: 2000 + i, Prefix: "mydear", Username: "root", Password: "root", EtcdCfg: clientv3.Config{Endpoints: []string{"192.168.31.101:2379"}}}
-			mem, err := NewDistributeMemory(cfg)
+			cfg := MemoryConfig{Port: 2000 + i, Prefix: "mydear", Username: "root", Password: "root", EtcdConfig: clientv3.Config{Endpoints: []string{"192.168.31.101:2379"}}}
+			mem, err := NewMemoryWithConfig(cfg)
 
 			if err != nil {
 				log.Fatal(err)
@@ -170,8 +170,20 @@ func TestLBPop(t *testing.T) {
 	mems := make([]Cache, 0)
 	for i := 0; i < int(count); i++ {
 
-		cfg := DistributeMemoryConfig{Port: 2000 + i, Prefix: "mydear", Username: "root", Password: "root", EtcdCfg: clientv3.Config{Endpoints: []string{"192.168.31.101:2379"}}}
-		mem, err := NewDistributeMemory(cfg)
+		cfg := MemoryConfig{
+			Port:     2000 + i,
+			Prefix:   "mydear",
+			Username: "root",
+			Password: "root",
+			EtcdConfig: EtcdConfig{
+				Endpoints:   []string{"192.168.31.101:2379"},
+				DialTimeout: time.Second * 5,
+				DialOptions: []grpc.DialOption{
+					grpc.WithTimeout(time.Second * 5),
+				},
+			},
+		}
+		mem, err := NewMemoryWithConfig(cfg)
 		if err != nil {
 			log.Fatal(err)
 		}

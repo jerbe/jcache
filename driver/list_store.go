@@ -2,12 +2,12 @@ package driver
 
 import (
 	"context"
-	"github.com/jerbe/jcache/v2/utils"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/jerbe/go-errors"
+	utils "github.com/jerbe/go-utils"
 )
 
 /**
@@ -38,7 +38,7 @@ func newListValue() *listValue {
 type listStore struct {
 	baseStore
 
-	evtSig *utils.Signal
+	evtSig *utils.PubSub
 }
 
 func newListStore() *listStore {
@@ -49,7 +49,7 @@ func newListStore() *listStore {
 			rwMutex:      sync.RWMutex{},
 			expireTicker: ticker,
 		},
-		evtSig: utils.NewSignal(),
+		evtSig: utils.NewPubSub(),
 	}
 
 	go store.checkExpireTick()

@@ -29,15 +29,15 @@ func testNewSortedSetClient() *SortedSetClient {
 	}
 
 	redisDriver := driver.NewRedis(opts)
-	distributeMemoryCfg := driver.DistributeMemoryConfig{
-		Prefix:   "mytest",
-		Port:     8088,
-		Username: "root",
-		Password: "root",
-		EtcdCfg:  clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}},
-		Context:  nil,
+	distributeMemoryCfg := driver.MemoryConfig{
+		Prefix:     "mytest",
+		Port:       8088,
+		Username:   "root",
+		Password:   "root",
+		EtcdConfig: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}},
+		Context:    nil,
 	}
-	m, err := driver.NewDistributeMemory(distributeMemoryCfg)
+	m, err := driver.NewMemoryWithConfig(distributeMemoryCfg)
 	if err != nil {
 		log.Fatal(err)
 	}

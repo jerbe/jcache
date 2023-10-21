@@ -32,8 +32,8 @@ func newStringClient() *StringClient {
 	var cnt = 2
 	l := make([]driver.Cache, 0)
 	for i := 0; i < cnt; i++ {
-		cfg := driver.DistributeMemoryConfig{Port: 9890 + i, Prefix: "/kings", EtcdCfg: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}}}
-		memoryDriver, err := driver.NewDistributeMemory(cfg)
+		cfg := driver.MemoryConfig{Port: 9890 + i, Prefix: "/kings", EtcdConfig: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}}}
+		memoryDriver, err := driver.NewMemoryWithConfig(cfg)
 		if err != nil {
 			panic(err)
 		}

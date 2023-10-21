@@ -26,8 +26,8 @@ var (
 
 func main() {
 	flag.Parse()
-	cfg := driver.DistributeMemoryConfig{Port: *port, Prefix: *prefix, EtcdCfg: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}}}
-	mem, err := driver.NewDistributeMemory(cfg)
+	cfg := driver.MemoryConfig{Port: *port, Prefix: *prefix, EtcdConfig: clientv3.Config{Endpoints: []string{"127.0.0.1:2379"}}}
+	mem, err := driver.NewMemoryWithConfig(cfg)
 	if err != nil {
 		log.Fatalf("初始化内存驱动失败. 原因:[%v]", err)
 	}
